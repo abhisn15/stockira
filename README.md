@@ -1,4 +1,4 @@
-# sadata_app
+# Stockira
 
 A new Flutter project.
 
