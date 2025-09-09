@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
-import 'package:sadata_app/screens/attandance/index.dart';
-import 'package:sadata_app/screens/permit/index.dart';
-import 'package:sadata_app/screens/itinerary/index.dart';
-import 'package:sadata_app/screens/reports/Survey/index.dart';
-import 'package:sadata_app/screens/auth/index.dart';
-import 'package:sadata_app/screens/url_setting/index.dart';
+import 'package:stockira/screens/attandance/index.dart';
+import 'package:stockira/screens/permit/index.dart';
+import 'package:stockira/screens/itinerary/index.dart';
+import 'package:stockira/screens/reports/Survey/index.dart';
+import 'package:stockira/screens/auth/index.dart';
+import 'package:stockira/screens/url_setting/index.dart';
+import 'package:stockira/services/attendance_service.dart';
+import 'package:stockira/services/auth_service.dart';
+import 'package:stockira/models/attendance_record.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -14,6 +17,9 @@ class DashboardScreen extends StatefulWidget {
 }
 
 class _DashboardScreenState extends State<DashboardScreen> {
+    final theme = const Color.fromARGB(255, 41, 189, 206);
+    final AttendanceService _attendanceService = AttendanceService();
+
   int _selectedIndex = 0;
 
   // Dummy activities for demonstration
@@ -23,8 +29,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
   int itineraryCount = 1;
   DateTime itineraryDate = DateTime.now();
 
-  // Dummy check-in/check-out state
+  // Check-in/check-out state
   bool isCheckedIn = false;
+  AttendanceRecord? todayRecord;
+  
+  // Filter states
+  DateTime? filterStartDate;
+  DateTime? filterEndDate;
+  String? filterStatus;
 
   // New bottom nav: Home, Payslip, Activity
   late final List<Widget> _screens;
@@ -32,6 +44,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   @override
   void initState() {
     super.initState();
+    _loadTodayRecord();
     _screens = [
       DashboardHome(
         onCheckIn: _handleCheckIn,
@@ -42,10 +55,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
         onReload: _handleReload,
         activities: activities,
         onShowAllFeatures: _showAllFeaturesBottomSheet,
+        onShowFilters: _showFiltersDialog,
       ),
       Center(child: Text('Payslip', style: TextStyle(fontSize: 24))),
       ActivityScreen(activities: activities, onReload: _handleReload),
     ];
+  }
+
+  Future<void> _loadTodayRecord() async {
+    final record = await _attendanceService.getTodayRecord();
+    setState(() {
+      todayRecord = record;
+      isCheckedIn = record?.isCheckedIn ?? false;
+    });
   }
 
   void _handleMenuSelection(BuildContext context, String value) {
@@ -306,7 +328,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  void _performLogout(BuildContext context) {
+  void _performLogout(BuildContext context) async {
     // Store context references before async operations
     final navigator = Navigator.of(context);
     final scaffoldMessenger = ScaffoldMessenger.of(context);
@@ -328,68 +350,202 @@ class _DashboardScreenState extends State<DashboardScreen> {
       },
     );
 
-    // Simulate logout process
-    Future.delayed(const Duration(seconds: 2), () {
-      try {
-        // Close loading dialog
-        navigator.pop();
+    try {
+      // Perform logout using AuthService
+      await AuthService.logout();
 
-        // Navigate back to auth screen
-        navigator.pushAndRemoveUntil(
-          MaterialPageRoute(builder: (context) => const AuthScreen()),
-          (route) => false,
-        );
+      // Close loading dialog
+      navigator.pop();
 
-        // Show success message
-        scaffoldMessenger.showSnackBar(
-          const SnackBar(
-            content: Text('Successfully logged out'),
-            backgroundColor: Colors.green,
-          ),
+      // Navigate back to auth screen
+      navigator.pushAndRemoveUntil(
+        MaterialPageRoute(builder: (context) => const AuthScreen()),
+        (route) => false,
+      );
+
+      // Show success message
+      scaffoldMessenger.showSnackBar(
+        const SnackBar(
+          content: Text('Successfully logged out'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } catch (e) {
+      // Handle any errors gracefully
+      print('Error during logout: $e');
+      // Close loading dialog
+      navigator.pop();
+      
+      // Show error message
+      scaffoldMessenger.showSnackBar(
+        SnackBar(
+          content: Text('Logout failed: ${e.toString()}'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  Future<void> _handleCheckIn() async {
+    try {
+      // Show store selection dialog
+      final store = await _showStoreSelectionDialog();
+      if (store != null) {
+        await _attendanceService.checkIn(store);
+        await _loadTodayRecord();
+        
+        setState(() {
+          activities.insert(0, {
+            'icon': Icons.login,
+            'title': 'Checked In',
+            'subtitle': 'Store: $store',
+            'time': 'Just now',
+            'color': Colors.green,
+          });
+        });
+        
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Successfully checked in at $store')),
         );
-      } catch (e) {
-        // Handle any navigation errors gracefully
-        print('Navigation error during logout: $e');
-        // Fallback: just close the dialog
-        try {
-          navigator.pop();
-        } catch (_) {
-          // If even closing fails, ignore
-        }
       }
-    });
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error checking in: $e')),
+      );
+    }
   }
 
-  void _handleCheckIn() {
-    setState(() {
-      isCheckedIn = true;
-      activities.insert(0, {
-        'icon': Icons.login,
-        'title': 'Checked In',
-        'subtitle': TimeOfDay.now().format(context),
-        'time': 'Just now',
-        'color': Colors.green,
+  Future<void> _handleCheckOut() async {
+    try {
+      await _attendanceService.checkOut();
+      await _loadTodayRecord();
+      
+      setState(() {
+        activities.insert(0, {
+          'icon': Icons.logout,
+          'title': 'Checked Out',
+          'subtitle': 'Working hours: ${todayRecord?.workingHoursFormatted ?? 'N/A'}',
+          'time': 'Just now',
+          'color': Colors.cyan,
+        });
       });
-    });
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(const SnackBar(content: Text('Check In successful!')));
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Successfully checked out')),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error checking out: $e')),
+      );
+    }
   }
 
-  void _handleCheckOut() {
-    setState(() {
-      isCheckedIn = false;
-      activities.insert(0, {
-        'icon': Icons.logout,
-        'title': 'Checked Out',
-        'subtitle': TimeOfDay.now().format(context),
-        'time': 'Just now',
-        'color': Colors.red,
-      });
-    });
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(const SnackBar(content: Text('Check Out successful!')));
+  Future<String?> _showStoreSelectionDialog() async {
+    final stores = ['Store 1', 'Store 2', 'Store 3', 'Store 4', 'Store 5'];
+    
+    return showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Select Store'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: stores.map((store) => ListTile(
+            title: Text(store),
+            onTap: () => Navigator.of(context).pop(store),
+          )).toList(),
+        ),
+      ),
+    );
+  }
+
+  void _showFiltersDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Filter Attendance'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Date range picker
+              ListTile(
+                title: const Text('Start Date'),
+                subtitle: Text(filterStartDate?.toString().split(' ')[0] ?? 'Select date'),
+                onTap: () async {
+                  final date = await showDatePicker(
+                    context: context,
+                    initialDate: filterStartDate ?? DateTime.now(),
+                    firstDate: DateTime(2020),
+                    lastDate: DateTime.now(),
+                  );
+                  if (date != null) {
+                    setDialogState(() {
+                      filterStartDate = date;
+                    });
+                  }
+                },
+              ),
+              ListTile(
+                title: const Text('End Date'),
+                subtitle: Text(filterEndDate?.toString().split(' ')[0] ?? 'Select date'),
+                onTap: () async {
+                  final date = await showDatePicker(
+                    context: context,
+                    initialDate: filterEndDate ?? DateTime.now(),
+                    firstDate: filterStartDate ?? DateTime(2020),
+                    lastDate: DateTime.now(),
+                  );
+                  if (date != null) {
+                    setDialogState(() {
+                      filterEndDate = date;
+                    });
+                  }
+                },
+              ),
+              // Status filter
+              DropdownButtonFormField<String>(
+                value: filterStatus,
+                decoration: const InputDecoration(labelText: 'Status'),
+                items: const [
+                  DropdownMenuItem(value: null, child: Text('All')),
+                  DropdownMenuItem(value: 'pending', child: Text('Pending')),
+                  DropdownMenuItem(value: 'checked_in', child: Text('Checked In')),
+                  DropdownMenuItem(value: 'completed', child: Text('Completed')),
+                ],
+                onChanged: (value) {
+                  setDialogState(() {
+                    filterStatus = value;
+                  });
+                },
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                setDialogState(() {
+                  filterStartDate = null;
+                  filterEndDate = null;
+                  filterStatus = null;
+                });
+              },
+              child: const Text('Clear'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                setState(() {});
+                Navigator.of(context).pop();
+              },
+              child: const Text('Apply'),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   void _handleReload() {
@@ -405,133 +561,180 @@ class _DashboardScreenState extends State<DashboardScreen> {
   void _showAllFeaturesBottomSheet(BuildContext context) {
     showModalBottomSheet(
       context: context,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: Colors.transparent,
+      transitionAnimationController: AnimationController(
+        vsync: Navigator.of(context),
+        duration: const Duration(milliseconds: 350),
       ),
       builder: (ctx) {
-        return Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 40,
-                height: 4,
-                margin: const EdgeInsets.only(bottom: 16),
-                decoration: BoxDecoration(
-                  color: Colors.grey[300],
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-              const Text(
-                'All Features',
-                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 20),
-              Wrap(
-                spacing: 24,
-                runSpacing: 24,
-                children: [
-                  _buildFeatureIcon(
-                    context: context,
-                    icon: Icons.access_time,
-                    label: 'Attendance',
-                    color: Colors.red,
-                    onTap: () {
-                      Navigator.of(context).pop();
-                      Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (_) => const AttendanceScreen(),
-                        ),
-                      );
-                    },
+        return AnimatedPadding(
+          duration: const Duration(milliseconds: 350),
+          curve: Curves.easeOutCubic,
+          padding: MediaQuery.of(ctx).viewInsets,
+          child: FractionallySizedBox(
+            widthFactor: 1,
+            child: Container(
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+                boxShadow: [
+                  BoxShadow(
+                    color: Color(0x22000000),
+                    blurRadius: 16,
+                    offset: Offset(0, -4),
                   ),
-                  _buildFeatureIcon(
-                    context: context,
-                    icon: Icons.event_note,
-                    label: 'Permit',
-                    color: Colors.orange,
-                    onTap: () {
-                      Navigator.of(context).pop();
-                      Navigator.of(context).push(
-                        MaterialPageRoute(builder: (_) => const PermitScreen()),
-                      );
-                    },
-                  ),
-                  _buildFeatureIcon(
-                    context: context,
-                    icon: Icons.route,
-                    label: 'Itinerary',
-                    color: Colors.purple,
-                    onTap: () {
-                      Navigator.of(context).pop();
-                      Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (_) => const ItineraryScreen(),
-                        ),
-                      );
-                    },
-                  ),
-                  _buildFeatureIcon(
-                    context: context,
-                    icon: Icons.assessment,
-                    label: 'Reports',
-                    color: Colors.green,
-                    onTap: () {
-                      Navigator.of(context).pop();
-                      Navigator.of(context).push(
-                        MaterialPageRoute(builder: (_) => const SurveyScreen()),
-                      );
-                    },
-                  ),
-                  _buildFeatureIcon(
-                    context: context,
-                    icon: Icons.receipt_long,
-                    label: 'Payslip',
-                    color: Colors.blue,
-                    onTap: () {
-                      Navigator.of(context).pop();
-                      setState(() {
-                        _selectedIndex = 1;
-                      });
-                    },
-                  ),
-                  _buildFeatureIcon(
-                    context: context,
-                    icon: Icons.list_alt,
-                    label: 'Activity',
-                    color: Colors.teal,
-                    onTap: () {
-                      Navigator.of(context).pop();
-                      setState(() {
-                        _selectedIndex = 2;
-                      });
-                    },
-                  ),
-                  // _buildFeatureIcon(
-                  //   context: context,
-                  //   icon: Icons.settings,
-                  //   label: 'Settings',
-                  //   color: Colors.grey,
-                  //   onTap: () {
-                  //     Navigator.of(context).pop();
-                  //     _showSettingsDialog(context);
-                  //   },
-                  // ),
-                  // _buildFeatureIcon(
-                  //   context: context,
-                  //   icon: Icons.help_outline,
-                  //   label: 'Help',
-                  //   color: Colors.orange,
-                  //   onTap: () {
-                  //     Navigator.of(context).pop();
-                  //     _showHelpDialog(context);
-                  //   },
-                  // ),
                 ],
               ),
-              const SizedBox(height: 24),
-            ],
+              child: AnimatedSize(
+                duration: const Duration(milliseconds: 350),
+                curve: Curves.easeOutCubic,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 0, vertical: 24),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        width: 48,
+                        height: 5,
+                        margin: const EdgeInsets.only(bottom: 18),
+                        decoration: BoxDecoration(
+                          color: Colors.grey[300],
+                          borderRadius: BorderRadius.circular(3),
+                        ),
+                      ),
+                      const Text(
+                        'All Features',
+                        style: TextStyle(
+                          fontSize: 22,
+                          fontWeight: FontWeight.bold,
+                          letterSpacing: 0.2,
+                        ),
+                      ),
+                      const SizedBox(height: 24),
+                      LayoutBuilder(
+                        builder: (context, constraints) {
+                          int crossAxisCount = 3;
+                          if (constraints.maxWidth > 600) crossAxisCount = 4;
+                          return GridView(
+                            shrinkWrap: true,
+                            physics: const NeverScrollableScrollPhysics(),
+                            padding: const EdgeInsets.symmetric(horizontal: 24),
+                            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                              crossAxisCount: crossAxisCount,
+                              mainAxisSpacing: 24,
+                              crossAxisSpacing: 24,
+                              childAspectRatio: 0.95,
+                            ),
+                            children: [
+                              _buildFeatureIcon(
+                                context: context,
+                                icon: Icons.access_time,
+                                label: 'Attendance',
+                                color: Colors.red,
+                                onTap: () {
+                                  Navigator.of(context).pop();
+                                  Navigator.of(context).push(
+                                    MaterialPageRoute(
+                                      builder: (_) => const AttendanceScreen(),
+                                    ),
+                                  );
+                                },
+                              ),
+                              _buildFeatureIcon(
+                                context: context,
+                                icon: Icons.event_note,
+                                label: 'Permit',
+                                color: Colors.orange,
+                                onTap: () {
+                                  Navigator.of(context).pop();
+                                  Navigator.of(context).push(
+                                    MaterialPageRoute(builder: (_) => const PermitScreen()),
+                                  );
+                                },
+                              ),
+                              _buildFeatureIcon(
+                                context: context,
+                                icon: Icons.route,
+                                label: 'Itinerary',
+                                color: Colors.purple,
+                                onTap: () {
+                                  Navigator.of(context).pop();
+                                  Navigator.of(context).push(
+                                    MaterialPageRoute(
+                                      builder: (_) => const ItineraryScreen(),
+                                    ),
+                                  );
+                                },
+                              ),
+                              _buildFeatureIcon(
+                                context: context,
+                                icon: Icons.assessment,
+                                label: 'Reports',
+                                color: Colors.green,
+                                onTap: () {
+                                  Navigator.of(context).pop();
+                                  Navigator.of(context).push(
+                                    MaterialPageRoute(builder: (_) => const SurveyScreen()),
+                                  );
+                                },
+                              ),
+                              _buildFeatureIcon(
+                                context: context,
+                                icon: Icons.receipt_long,
+                                label: 'Payslip',
+                                color: Colors.blue,
+                                onTap: () {
+                                  Navigator.of(context).pop();
+                                  setState(() {
+                                    _selectedIndex = 1;
+                                  });
+                                },
+                              ),
+                              _buildFeatureIcon(
+                                context: context,
+                                icon: Icons.list_alt,
+                                label: 'Activity',
+                                color: Colors.teal,
+                                onTap: () {
+                                  Navigator.of(context).pop();
+                                  setState(() {
+                                    _selectedIndex = 2;
+                                  });
+                                },
+                              ),
+                              // Uncomment if needed:
+                              // _buildFeatureIcon(
+                              //   context: context,
+                              //   icon: Icons.settings,
+                              //   label: 'Settings',
+                              //   color: Colors.grey,
+                              //   onTap: () {
+                              //     Navigator.of(context).pop();
+                              //     _showSettingsDialog(context);
+                              //   },
+                              // ),
+                              // _buildFeatureIcon(
+                              //   context: context,
+                              //   icon: Icons.help_outline,
+                              //   label: 'Help',
+                              //   color: Colors.orange,
+                              //   onTap: () {
+                              //     Navigator.of(context).pop();
+                              //     _showHelpDialog(context);
+                              //   },
+                              // ),
+                            ],
+                          );
+                        },
+                      ),
+                      const SizedBox(height: 32),
+                    ],
+                  ),
+                ),
+              ),
+            ),
           ),
         );
       },
@@ -611,6 +814,7 @@ class DashboardHome extends StatelessWidget {
   final VoidCallback onReload;
   final List<Map<String, dynamic>> activities;
   final void Function(BuildContext) onShowAllFeatures;
+  final VoidCallback onShowFilters;
 
   const DashboardHome({
     super.key,
@@ -622,6 +826,7 @@ class DashboardHome extends StatelessWidget {
     required this.onReload,
     required this.activities,
     required this.onShowAllFeatures,
+    required this.onShowFilters,
   });
 
   @override
@@ -663,7 +868,7 @@ class DashboardHome extends StatelessWidget {
             children: [
               const CircleAvatar(
                 radius: 32,
-                backgroundColor: Colors.red,
+                backgroundColor: Color.fromARGB(255, 41, 189, 206),
                 backgroundImage: null,
                 child: Icon(Icons.person, size: 36, color: Colors.white),
               ),
@@ -689,7 +894,7 @@ class DashboardHome extends StatelessWidget {
                 ),
               ),
               IconButton(
-                icon: const Icon(Icons.notifications, color: Colors.red),
+                icon: const Icon(Icons.notifications, color: Color.fromARGB(255, 41, 189, 206)),
                 onPressed: () {
                   // Handle notifications
                 },
@@ -878,7 +1083,7 @@ class DashboardHome extends StatelessWidget {
                 ),
               ),
               IconButton(
-                icon: const Icon(Icons.refresh, color: Colors.red),
+                icon: const Icon(Icons.refresh, color: Colors.cyan),
                 onPressed: onReload,
                 tooltip: 'Reload',
               ),
@@ -907,7 +1112,7 @@ class DashboardHome extends StatelessWidget {
                   style: ElevatedButton.styleFrom(
                     backgroundColor: isCheckedIn
                         ? Colors.grey[300]
-                        : Colors.green,
+                        : Color.fromARGB(255, 41, 189, 206),
                     foregroundColor: isCheckedIn
                         ? Colors.black54
                         : Colors.white,
@@ -935,6 +1140,7 @@ class DashboardHome extends StatelessWidget {
               ),
             ],
           ),
+          const SizedBox(height: 12),
         ],
       ),
     );
@@ -1107,7 +1313,7 @@ class ActivityScreen extends StatelessWidget {
         title: const Text('Activity'),
         actions: [
           IconButton(
-            icon: const Icon(Icons.refresh, color: Colors.red),
+            icon: const Icon(Icons.refresh, color: Colors.cyan),
             onPressed: onReload,
             tooltip: 'Reload',
           ),

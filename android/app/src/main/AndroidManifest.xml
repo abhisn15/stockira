@@ -2,10 +2,16 @@
     <!-- Camera permission for QR code scanning -->
     <uses-permission android:name="android.permission.CAMERA" />
     
+    <!-- Internet permission for API access -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    
     <application
-        android:label="sadata_app"
+        android:label="Stockira"
         android:name="${applicationName}"
-        android:icon="@mipmap/ic_launcher">
+        android:icon="@mipmap/launcher_icon"
+        android:usesCleartextTraffic="true"
+        android:networkSecurityConfig="@xml/network_security_config">
         <activity
             android:name=".MainActivity"
             android:exported="true"

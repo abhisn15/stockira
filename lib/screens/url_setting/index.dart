@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:sadata_app/screens/auth/index.dart';
+import 'package:stockira/screens/auth/index.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 
@@ -12,32 +12,44 @@ class UrlSettingScreen extends StatefulWidget {
 
 class _UrlSettingScreenState extends State<UrlSettingScreen> {
   final _formKey = GlobalKey<FormState>();
-  final _urlController = TextEditingController();
+  final TextEditingController _urlController = TextEditingController();
   bool _isLoading = false;
   MobileScannerController? _scannerController;
   bool _isScanning = true;
 
   // Dummy validation data
   final List<String> _validUrls = [
-    'https://api.example.com',
-    'https://api.sadata.com',
-    'https://api.company.com',
-    'https://api.test.com',
+    'https://aice.tpm-facility.com',
+    // 'https://api.stockira.com',
+    // 'https://api.company.com',
+    // 'https://api.test.com',
   ];
 
   @override
   void initState() {
     super.initState();
-    _loadSavedUrl();
+    _checkAndRedirectIfUrlExists();
     _scannerController = MobileScannerController();
   }
 
-  Future<void> _loadSavedUrl() async {
+  Future<void> _checkAndRedirectIfUrlExists() async {
     final prefs = await SharedPreferences.getInstance();
-    final savedUrl = prefs.getString('api_url') ?? 'https://';
-    setState(() {
-      _urlController.text = savedUrl;
-    });
+    final savedUrl = prefs.getString('api_url');
+    if (savedUrl != null && savedUrl.isNotEmpty && savedUrl != 'https://') {
+      // Langsung redirect ke AuthScreen jika sudah ada url yang valid
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(builder: (context) => const AuthScreen()),
+          (route) => false,
+        );
+      });
+    } else {
+      // Jika belum ada, tetap tampilkan form
+      setState(() {
+        // Default value is 'https://'
+        _urlController.text = savedUrl ?? '';
+      });
+    }
   }
 
   Future<void> _saveUrl() async {
@@ -46,16 +58,16 @@ class _UrlSettingScreenState extends State<UrlSettingScreen> {
       final confirm = await showDialog<bool>(
         context: context,
         builder: (context) => AlertDialog(
-          title: const Text('Konfirmasi URL'),
-          content: Text('Gunakan URL berikut?\n\n${_urlController.text}'),
+          title: const Text('Confirmation'),
+          content: Text('Do you really sure to use this url \n\nhttps://${_urlController.text}'),
           actions: [
             TextButton(
               onPressed: () => Navigator.of(context).pop(false),
-              child: const Text('Batal'),
+              child: const Text('No'),
             ),
             ElevatedButton(
               onPressed: () => Navigator.of(context).pop(true),
-              child: const Text('Gunakan'),
+              child: const Text('Yes'),
             ),
           ],
         ),
@@ -68,26 +80,27 @@ class _UrlSettingScreenState extends State<UrlSettingScreen> {
 
         await Future.delayed(const Duration(seconds: 1));
 
-        if (_validateUrl(_urlController.text)) {
+        final fullUrl = 'https://${_urlController.text}';
+
+        if (_validateUrl(fullUrl)) {
           final prefs = await SharedPreferences.getInstance();
-          await prefs.setString('api_url', _urlController.text);
+          await prefs.setString('api_url', fullUrl);
 
           if (mounted) {
             // Show success dialog
             await showDialog(
               context: context,
               builder: (context) => AlertDialog(
-                title: const Text('Berhasil'),
-                content: const Text('URL berhasil disimpan!'),
+                title: const Text('Successfully'),
+                content: const Text('URL successfully saved!'),
                 actions: [
                   TextButton(
                     onPressed: () {
                       Navigator.of(context).pop();
-                      Navigator.of(context).pushAndRemoveUntil(
+                      Navigator.of(context).push(
                         MaterialPageRoute(
                           builder: (context) => const AuthScreen(),
                         ),
-                        (route) => false,
                       );
                     },
                     child: const Text('OK'),
@@ -123,7 +136,8 @@ class _UrlSettingScreenState extends State<UrlSettingScreen> {
   }
 
   bool _validateUrl(String url) {
-    if (!url.startsWith('https://') && !url.startsWith('http://')) {
+    // Only allow https URLs for this default
+    if (!url.startsWith('https://')) {
       return false;
     }
     // Bisa diubah ke _validUrls.contains(url) jika ingin validasi ketat
@@ -134,10 +148,12 @@ class _UrlSettingScreenState extends State<UrlSettingScreen> {
     if (value == null || value.isEmpty) {
       return 'Masukkan URL';
     }
-    if (!value.startsWith('https://') && !value.startsWith('http://')) {
-      return 'URL harus diawali dengan https:// atau http://';
+    // Only allow characters valid for a domain or path
+    final urlPattern = RegExp(r'^[a-zA-Z0-9\.\-\/:]+$');
+    if (!urlPattern.hasMatch(value)) {
+      return 'URL mengandung karakter tidak valid';
     }
-    if (value.length < 10) {
+    if (value.length < 4) {
       return 'URL terlalu pendek';
     }
     return null;
@@ -155,14 +171,22 @@ class _UrlSettingScreenState extends State<UrlSettingScreen> {
     if (scannedUrl != null && scannedUrl.isNotEmpty && _isScanning) {
       setState(() {
         _isScanning = false;
-        _urlController.text = scannedUrl;
       });
 
+      // Remove protocol if present
+      String url = scannedUrl;
+      if (url.startsWith('https://')) {
+        url = url.substring(8);
+      } else if (url.startsWith('http://')) {
+        url = url.substring(7);
+      }
+      _urlController.text = url;
+
       // Validate the scanned URL
-      if (_isValidUrl(scannedUrl)) {
+      if (_isValidUrl('https://$url')) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('URL terdeteksi: $scannedUrl'),
+            content: Text('URL terdeteksi: https://$url'),
             backgroundColor: Colors.green,
             duration: const Duration(seconds: 2),
           ),
@@ -188,7 +212,8 @@ class _UrlSettingScreenState extends State<UrlSettingScreen> {
   }
 
   bool _isValidUrl(String url) {
-    return url.startsWith('http://') || url.startsWith('https://');
+    // Only allow https URLs for this default
+    return url.startsWith('https://');
   }
 
   @override
@@ -345,29 +370,47 @@ class _UrlSettingScreenState extends State<UrlSettingScreen> {
                     children: [
                       // URL input field
                       Expanded(
-                        child: TextFormField(
-                          controller: _urlController,
-                          style: const TextStyle(color: Colors.white),
-                          decoration: InputDecoration(
-                            labelText: 'API URL',
-                            labelStyle: const TextStyle(color: Colors.white70),
-                            hintText: 'https://api.example.com',
-                            hintStyle: const TextStyle(color: Colors.white38),
-                            prefixIcon: const Icon(Icons.link, color: Colors.white70),
-                            enabledBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
-                              borderSide: const BorderSide(color: Colors.white24),
+                        child: Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8),
+                              child: const Text(
+                                'https://',
+                                style: TextStyle(
+                                  color: Colors.white70,
+                                  fontWeight: FontWeight.w500,
+                                  fontSize: 16,
+                                ),
+                              ),
                             ),
-                            focusedBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
-                              borderSide: const BorderSide(color: Colors.blue, width: 2),
+                            Expanded(
+                              child: TextFormField(
+                                controller: _urlController,
+                                style: const TextStyle(color: Colors.white),
+                                decoration: InputDecoration(
+                                  labelText: 'example.com',
+                                  labelStyle: const TextStyle(color: Colors.white70),
+                                  // hintText: 'example.com',
+                                  hintStyle: const TextStyle(color: Colors.white38),
+                                  enabledBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                    borderSide: const BorderSide(color: Colors.white24),
+                                  ),
+                                  focusedBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                    borderSide: const BorderSide(color: Colors.blue, width: 2),
+                                  ),
+                                  filled: true,
+                                  fillColor: Colors.white.withOpacity(0.1),
+                                  isDense: true,
+                                  contentPadding: const EdgeInsets.symmetric(vertical: 18, horizontal: 12),
+                                ),
+                                keyboardType: TextInputType.url,
+                                validator: _validateUrlField,
+                                enabled: !_isLoading,
+                              ),
                             ),
-                            filled: true,
-                            fillColor: Colors.white.withOpacity(0.1),
-                          ),
-                          keyboardType: TextInputType.url,
-                          validator: _validateUrlField,
-                          enabled: !_isLoading,
+                          ],
                         ),
                       ),
                       const SizedBox(width: 12),
@@ -393,7 +436,7 @@ class _UrlSettingScreenState extends State<UrlSettingScreen> {
                                     valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
                                   ),
                                 )
-                              : const Text('Gunakan URL'),
+                              : const Text('Setting URL'),
                         ),
                       ),
                     ],
