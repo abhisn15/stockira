@@ -28,28 +28,16 @@ class _UrlSettingScreenState extends State<UrlSettingScreen> {
   @override
   void initState() {
     super.initState();
-    _checkAndRedirectIfUrlExists();
+    _loadSavedUrl();
     _scannerController = MobileScannerController();
   }
 
-  Future<void> _checkAndRedirectIfUrlExists() async {
+  Future<void> _loadSavedUrl() async {
     final prefs = await SharedPreferences.getInstance();
     final savedUrl = prefs.getString('api_url');
-    if (savedUrl != null && savedUrl.isNotEmpty && savedUrl != 'https://') {
-      // Langsung redirect ke AuthScreen jika sudah ada url yang valid
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        Navigator.of(context).pushAndRemoveUntil(
-          MaterialPageRoute(builder: (context) => const AuthScreen()),
-          (route) => false,
-        );
-      });
-    } else {
-      // Jika belum ada, tetap tampilkan form
-      setState(() {
-        // Default value is 'https://'
-        _urlController.text = savedUrl ?? '';
-      });
-    }
+    setState(() {
+      _urlController.text = savedUrl != null && savedUrl != 'https://' ? savedUrl.replaceFirst('https://', '') : '';
+    });
   }
 
   Future<void> _saveUrl() async {

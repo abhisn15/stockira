@@ -8,4 +8,5 @@ class Env {
   static String get apiBaseUrl => '$baseUrl/$prefixApi/$apiVersion';
   
   static String get loginUrl => '$apiBaseUrl/login';
+  static String get profileUrl => '$apiBaseUrl/me';
 }

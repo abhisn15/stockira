@@ -1,6 +1,10 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-    <!-- Camera permission for QR code scanning -->
+    <!-- Camera permission for QR code scanning and attendance photos -->
     <uses-permission android:name="android.permission.CAMERA" />
+    
+    <!-- Location permissions for attendance tracking -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     
     <!-- Internet permission for API access -->
     <uses-permission android:name="android.permission.INTERNET" />
@@ -11,7 +15,8 @@
         android:name="${applicationName}"
         android:icon="@mipmap/launcher_icon"
         android:usesCleartextTraffic="true"
-        android:networkSecurityConfig="@xml/network_security_config">
+        android:networkSecurityConfig="@xml/network_security_config"
+        android:allowBackup="false">
         <activity
             android:name=".MainActivity"
             android:exported="true"

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:stockira/services/attendance_service.dart';
 import 'package:stockira/models/attendance_record.dart';
+import '../attendance/calendar_screen.dart';
 
 class AttendanceScreen extends StatefulWidget {
   const AttendanceScreen({super.key});
@@ -446,6 +447,19 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
         title: const Text('Attendance'),
         backgroundColor: Colors.red,
         foregroundColor: Colors.white,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.calendar_month),
+            onPressed: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (context) => const AttendanceCalendarScreen(),
+                ),
+              );
+            },
+            tooltip: 'View Calendar',
+          ),
+        ],
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
@@ -772,9 +786,9 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
                     fontSize: 14,
                   ),
                 ),
-                if (record.store != null)
+                if (record.storeName != null)
                   Text(
-                    'Store: ${record.store}',
+                    'Store: ${record.storeName}',
                     style: const TextStyle(
                       fontSize: 12,
                       color: Colors.black54,
@@ -793,7 +807,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
           ),
           if (record.checkInTime != null)
             Text(
-              record.checkInTime!,
+              '${record.checkInTime!.hour.toString().padLeft(2, '0')}:${record.checkInTime!.minute.toString().padLeft(2, '0')}',
               style: const TextStyle(
                 fontSize: 12,
                 color: Colors.black54,

@@ -45,9 +45,15 @@
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
-	<!-- Camera permission for QR code scanning -->
+	<!-- Camera permission for QR code scanning and attendance photos -->
 	<key>NSCameraUsageDescription</key>
-	<string>This app needs access to camera to scan QR codes for URL settings.</string>
+	<string>This app needs access to camera to scan QR codes and take attendance photos.</string>
+	
+	<!-- Location permissions for attendance tracking -->
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>This app needs access to location to track attendance check-in and check-out locations.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>This app needs access to location to track attendance check-in and check-out locations.</string>
 	
 	<!-- Network permissions for API access -->
 	<key>NSAppTransportSecurity</key>

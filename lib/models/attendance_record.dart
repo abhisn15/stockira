@@ -1,79 +1,109 @@
 class AttendanceRecord {
-  final String id;
+  final dynamic id; // Can be String or int
+  final int? employeeId;
   final DateTime date;
-  final String? checkInTime;
-  final String? checkOutTime;
-  final String? store;
+  final DateTime? checkInTime;
+  final DateTime? checkOutTime;
+  final int? storeId;
+  final String? storeName;
+  final String? storeAddress;
+  final double? latitude;
+  final double? longitude;
   final int? duration; // in minutes
-  final String status; // 'checked_in', 'checked_out', 'completed'
-  final String? notes;
-  final DateTime createdAt;
-  final DateTime updatedAt;
+  final String status; // 'checked_in', 'checked_out', 'completed', 'permit', 'absent', 'no_activity'
+  final String? note;
+  final DateTime? createdAt;
+  final DateTime? updatedAt;
 
   AttendanceRecord({
     required this.id,
+    this.employeeId,
     required this.date,
     this.checkInTime,
     this.checkOutTime,
-    this.store,
+    this.storeId,
+    this.storeName,
+    this.storeAddress,
+    this.latitude,
+    this.longitude,
     this.duration,
     this.status = 'pending',
-    this.notes,
-    required this.createdAt,
-    required this.updatedAt,
+    this.note,
+    this.createdAt,
+    this.updatedAt,
   });
 
   Map<String, dynamic> toJson() {
     return {
       'id': id,
+      'employee_id': employeeId,
       'date': date.toIso8601String(),
-      'checkInTime': checkInTime,
-      'checkOutTime': checkOutTime,
-      'store': store,
+      'check_in_time': checkInTime?.toIso8601String(),
+      'check_out_time': checkOutTime?.toIso8601String(),
+      'store_id': storeId,
+      'store_name': storeName,
+      'store_address': storeAddress,
+      'latitude': latitude,
+      'longitude': longitude,
       'duration': duration,
       'status': status,
-      'notes': notes,
-      'createdAt': createdAt.toIso8601String(),
-      'updatedAt': updatedAt.toIso8601String(),
+      'note': note,
+      'created_at': createdAt?.toIso8601String(),
+      'updated_at': updatedAt?.toIso8601String(),
     };
   }
 
   factory AttendanceRecord.fromJson(Map<String, dynamic> json) {
     return AttendanceRecord(
       id: json['id'],
+      employeeId: json['employee_id'],
       date: DateTime.parse(json['date']),
-      checkInTime: json['checkInTime'],
-      checkOutTime: json['checkOutTime'],
-      store: json['store'],
+      checkInTime: json['check_in_time'] != null ? DateTime.parse(json['check_in_time']) : null,
+      checkOutTime: json['check_out_time'] != null ? DateTime.parse(json['check_out_time']) : null,
+      storeId: json['store_id'],
+      storeName: json['store_name'],
+      storeAddress: json['store_address'],
+      latitude: json['latitude']?.toDouble(),
+      longitude: json['longitude']?.toDouble(),
       duration: json['duration'],
       status: json['status'] ?? 'pending',
-      notes: json['notes'],
-      createdAt: DateTime.parse(json['createdAt']),
-      updatedAt: DateTime.parse(json['updatedAt']),
+      note: json['note'],
+      createdAt: json['created_at'] != null ? DateTime.parse(json['created_at']) : null,
+      updatedAt: json['updated_at'] != null ? DateTime.parse(json['updated_at']) : null,
     );
   }
 
   AttendanceRecord copyWith({
-    String? id,
+    dynamic id,
+    int? employeeId,
     DateTime? date,
-    String? checkInTime,
-    String? checkOutTime,
-    String? store,
+    DateTime? checkInTime,
+    DateTime? checkOutTime,
+    int? storeId,
+    String? storeName,
+    String? storeAddress,
+    double? latitude,
+    double? longitude,
     int? duration,
     String? status,
-    String? notes,
+    String? note,
     DateTime? createdAt,
     DateTime? updatedAt,
   }) {
     return AttendanceRecord(
       id: id ?? this.id,
+      employeeId: employeeId ?? this.employeeId,
       date: date ?? this.date,
       checkInTime: checkInTime ?? this.checkInTime,
       checkOutTime: checkOutTime ?? this.checkOutTime,
-      store: store ?? this.store,
+      storeId: storeId ?? this.storeId,
+      storeName: storeName ?? this.storeName,
+      storeAddress: storeAddress ?? this.storeAddress,
+      latitude: latitude ?? this.latitude,
+      longitude: longitude ?? this.longitude,
       duration: duration ?? this.duration,
       status: status ?? this.status,
-      notes: notes ?? this.notes,
+      note: note ?? this.note,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
     );
@@ -86,14 +116,7 @@ class AttendanceRecord {
   int get workingMinutes {
     if (checkInTime == null || checkOutTime == null) return 0;
     
-    // Parse time strings (assuming format like "14:30")
-    final checkInParts = checkInTime!.split(':');
-    final checkOutParts = checkOutTime!.split(':');
-    
-    final checkInMinutes = int.parse(checkInParts[0]) * 60 + int.parse(checkInParts[1]);
-    final checkOutMinutes = int.parse(checkOutParts[0]) * 60 + int.parse(checkOutParts[1]);
-    
-    return checkOutMinutes - checkInMinutes;
+    return checkOutTime!.difference(checkInTime!).inMinutes;
   }
 
   String get workingHoursFormatted {
