@@ -9,7 +9,7 @@ import 'auth_service.dart';
 
 class AttendanceService {
   static const String _attendanceKey = 'attendance_records';
-  
+
   // Singleton pattern
   static final AttendanceService _instance = AttendanceService._internal();
   factory AttendanceService() => _instance;
@@ -19,7 +19,7 @@ class AttendanceService {
   Future<List<AttendanceRecord>> getAllRecords() async {
     final prefs = await SharedPreferences.getInstance();
     final recordsJson = prefs.getStringList(_attendanceKey) ?? [];
-    
+
     return recordsJson
         .map((json) => AttendanceRecord.fromJson(jsonDecode(json)))
         .toList();
@@ -33,7 +33,7 @@ class AttendanceService {
     final allRecords = await getAllRecords();
     return allRecords.where((record) {
       return record.date.isAfter(startDate.subtract(const Duration(days: 1))) &&
-             record.date.isBefore(endDate.add(const Duration(days: 1)));
+          record.date.isBefore(endDate.add(const Duration(days: 1)));
     }).toList();
   }
 
@@ -47,14 +47,37 @@ class AttendanceService {
   Future<AttendanceRecord?> getTodayRecord() async {
     final today = DateTime.now();
     final allRecords = await getAllRecords();
-    
+
     try {
-      return allRecords.firstWhere((record) {
+      // ✅ Ambil semua record hari ini
+      final todayRecords = allRecords.where((record) {
         return record.date.year == today.year &&
-               record.date.month == today.month &&
-               record.date.day == today.day;
-      });
+            record.date.month == today.month &&
+            record.date.day == today.day;
+      }).toList();
+
+      if (todayRecords.isEmpty) {
+        return null;
+      }
+
+      // ✅ Sort by created time to get the most recent
+      todayRecords.sort((a, b) => (b.createdAt ?? DateTime(2000)).compareTo(a.createdAt ?? DateTime(2000)));
+      
+      // ✅ Prioritaskan record yang masih checked-in
+      final checkedInRecords = todayRecords.where((record) => record.isCheckedIn).toList();
+      final selectedRecord = checkedInRecords.isNotEmpty 
+          ? checkedInRecords.first 
+          : todayRecords.first; // Ambil yang paling baru
+
+      print('📋 Found ${todayRecords.length} records for today');
+      print('🔍 Checked-in records: ${checkedInRecords.length}');
+      print('✅ Selected record ID: ${selectedRecord.id}');
+      print('✅ Selected record: checkedIn=${selectedRecord.isCheckedIn}, store=${selectedRecord.storeName}');
+      print('✅ Selected record times: checkIn=${selectedRecord.checkInTime}, checkOut=${selectedRecord.checkOutTime}');
+      
+      return selectedRecord;
     } catch (e) {
+      print('❌ Error getting today record: $e');
       return null;
     }
   }
@@ -63,18 +86,30 @@ class AttendanceService {
   Future<void> saveRecord(AttendanceRecord record) async {
     final prefs = await SharedPreferences.getInstance();
     final allRecords = await getAllRecords();
-    
+
     // Remove existing record with same ID
     allRecords.removeWhere((r) => r.id == record.id);
-    
+
+    // ✅ Jika ini record check-in baru, hapus record lama yang sudah checkout hari ini
+    if (record.checkInTime != null && record.checkOutTime == null) {
+      final today = record.date;
+      allRecords.removeWhere((r) => 
+        r.date.year == today.year &&
+        r.date.month == today.month &&
+        r.date.day == today.day &&
+        r.checkOutTime != null && // Record yang sudah checkout
+        r.id != record.id // Kecuali record ini sendiri
+      );
+      print('🧹 Cleaned up old checkout records for today');
+    }
+
     // Add updated record
     allRecords.add(record);
-    
+
     // Save back to preferences
-    final recordsJson = allRecords
-        .map((r) => jsonEncode(r.toJson()))
-        .toList();
+    final recordsJson = allRecords.map((r) => jsonEncode(r.toJson())).toList();
     
+    print('💾 Saving ${allRecords.length} total records');
     await prefs.setStringList(_attendanceKey, recordsJson);
   }
 
@@ -82,20 +117,41 @@ class AttendanceService {
   Future<AttendanceRecord> createTodayRecord() async {
     final today = DateTime.now();
     final existingRecord = await getTodayRecord();
-    
-    if (existingRecord != null) {
+
+    // ✅ Jika sudah ada record dan masih checked-in, return existing
+    if (existingRecord != null && existingRecord.isCheckedIn) {
+      print('📋 Found existing checked-in record, using it');
       return existingRecord;
     }
-    
+
+    // ✅ Jika ada record tapi sudah checkout, buat record baru untuk check-in baru
+    print('🆕 Creating fresh record for new check-in');
     final newRecord = AttendanceRecord(
-      id: '${today.year}${today.month.toString().padLeft(2, '0')}${today.day.toString().padLeft(2, '0')}',
+      id: '${today.year}${today.month.toString().padLeft(2, '0')}${today.day.toString().padLeft(2, '0')}_${today.millisecondsSinceEpoch}',
       date: today,
       createdAt: today,
       updatedAt: today,
     );
-    
+
     await saveRecord(newRecord);
     return newRecord;
+  }
+
+  // Debug method to clear all attendance data (for testing)
+  Future<void> clearAllAttendanceData() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_attendanceKey);
+    print('🧹 Cleared all attendance data');
+  }
+
+  // Debug method to list all records
+  Future<void> debugAllRecords() async {
+    final allRecords = await getAllRecords();
+    print('📊 Total records: ${allRecords.length}');
+    for (var i = 0; i < allRecords.length; i++) {
+      final r = allRecords[i];
+      print('   Record $i: ID=${r.id}, checkIn=${r.checkInTime}, checkOut=${r.checkOutTime}, isCheckedIn=${r.isCheckedIn}, store=${r.storeName}');
+    }
   }
 
   // Check in
@@ -170,7 +226,8 @@ class AttendanceService {
       // Add fields
       final now = DateTime.now();
       request.fields.addAll({
-        'date': '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}',
+        'date':
+            '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}',
         'store_id': storeId.toString(),
         'check_in_time': now.toIso8601String().split('T')[1].split('Z')[0],
         'latitude': position.latitude.toString(),
@@ -180,10 +237,7 @@ class AttendanceService {
       });
 
       // Add image file
-      request.files.add(await http.MultipartFile.fromPath(
-        'image',
-        image.path,
-      ));
+      request.files.add(await http.MultipartFile.fromPath('image', image.path));
 
       // Send request
       final streamedResponse = await request.send();
@@ -196,36 +250,60 @@ class AttendanceService {
       if (response.statusCode == 200) {
         // API call successful, save locally for offline access
         final today = DateTime.now();
+        print('✅ API check-in successful, saving local record...');
         
+        // Debug current state
+        await debugAllRecords();
+
         final record = await createTodayRecord();
+        print('📋 Base record: ${record.id}, checkIn=${record.checkInTime}, checkOut=${record.checkOutTime}');
+        
         final updatedRecord = record.copyWith(
           checkInTime: today,
+          clearCheckOutTime: true, // ✅ Explicitly clear checkout time
+          storeId: storeId, // ✅ Save store ID untuk checkout nanti
           storeName: storeName,
           status: 'checked_in',
           updatedAt: today,
         );
-        
+
+        print('💾 Saving updated record: checkIn=${updatedRecord.checkInTime}, checkOut=${updatedRecord.checkOutTime}, isCheckedIn=${updatedRecord.isCheckedIn}');
         await saveRecord(updatedRecord);
+        
+        // Verify save
+        final verifyRecord = await getTodayRecord();
+        print('🔍 Verification record: checkIn=${verifyRecord?.checkInTime}, checkOut=${verifyRecord?.checkOutTime}, isCheckedIn=${verifyRecord?.isCheckedIn}');
+        
         return updatedRecord;
       } else {
         final errorData = jsonDecode(response.body);
         throw Exception(errorData['message'] ?? 'Check-in failed');
       }
     } catch (e) {
-      print('Error during check-in: $e');
+      print('❌ Error during check-in API: $e');
+      print('🔄 Using fallback local storage...');
       // Fallback to local storage if API fails
       final today = DateTime.now();
-      final timeString = '${today.hour.toString().padLeft(2, '0')}:${today.minute.toString().padLeft(2, '0')}';
-      
+
       final record = await createTodayRecord();
+      print('📋 Fallback base record: ${record.id}, checkIn=${record.checkInTime}, checkOut=${record.checkOutTime}');
+      
       final updatedRecord = record.copyWith(
         checkInTime: today,
+        clearCheckOutTime: true, // ✅ Explicitly clear checkout time
+        storeId: storeId, // ✅ Save store ID untuk checkout nanti
         storeName: storeName,
         status: 'checked_in',
         updatedAt: today,
       );
-      
+
+      print('💾 Fallback saving record: checkIn=${updatedRecord.checkInTime}, checkOut=${updatedRecord.checkOutTime}, isCheckedIn=${updatedRecord.isCheckedIn}');
       await saveRecord(updatedRecord);
+      
+      // Verify save
+      final verifyRecord = await getTodayRecord();
+      print('🔍 Fallback verification: checkIn=${verifyRecord?.checkInTime}, checkOut=${verifyRecord?.checkOutTime}, isCheckedIn=${verifyRecord?.isCheckedIn}');
+      
       return updatedRecord;
     }
   }
@@ -235,6 +313,8 @@ class AttendanceService {
     required XFile image,
     required String note,
   }) async {
+    print('🔴 CHECKOUT CALLED!');
+    print('🔍 Stack trace: ${StackTrace.current}');
     try {
       // Get authentication token
       final token = await AuthService.getToken();
@@ -297,22 +377,29 @@ class AttendanceService {
         'Authorization': 'Bearer $token',
       });
 
-      // Add fields
+      // Get current checked-in record to get store_id
+      final currentRecord = await getTodayRecord();
+      if (currentRecord == null || !currentRecord.isCheckedIn) {
+        throw Exception('No active check-in found for checkout');
+      }
+
+      // Add fields including the required store_id
       final now = DateTime.now();
       request.fields.addAll({
-        'date': '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}',
-        'check_out_time': now.toIso8601String(),
+        'date':
+            '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}',
+        'store_id': currentRecord.storeId?.toString() ?? '0', // ✅ Add missing store_id
+        'check_out_time': now.toIso8601String().split('T')[1].split('Z')[0],
         'latitude': position.latitude.toString(),
         'longitude': position.longitude.toString(),
         'note': note,
         'is_out_itinerary': '1',
       });
+      
+      print('📤 Checkout request fields: ${request.fields}');
 
       // Add image file
-      request.files.add(await http.MultipartFile.fromPath(
-        'image',
-        image.path,
-      ));
+      request.files.add(await http.MultipartFile.fromPath('image', image.path));
 
       // Send request
       final streamedResponse = await request.send();
@@ -324,22 +411,22 @@ class AttendanceService {
       if (response.statusCode == 200) {
         // API call successful, save locally for offline access
         final today = DateTime.now();
-        
+
         final record = await getTodayRecord();
         if (record == null || record.checkInTime == null) {
           throw Exception('No check-in found for today');
         }
-        
+
         // Calculate duration
         final duration = today.difference(record.checkInTime!).inMinutes;
-        
+
         final updatedRecord = record.copyWith(
           checkOutTime: today,
           duration: duration,
           status: 'completed',
           updatedAt: today,
         );
-        
+
         await saveRecord(updatedRecord);
         return updatedRecord;
       } else {
@@ -347,28 +434,14 @@ class AttendanceService {
         throw Exception(errorData['message'] ?? 'Check-out failed');
       }
     } catch (e) {
-      print('Error during check-out: $e');
-      // Fallback to local storage if API fails
-      final today = DateTime.now();
-      final timeString = '${today.hour.toString().padLeft(2, '0')}:${today.minute.toString().padLeft(2, '0')}';
+      print('❌ Error during check-out API: $e');
       
-      final record = await getTodayRecord();
-      if (record == null || record.checkInTime == null) {
-        throw Exception('No check-in found for today');
-      }
+      // ✅ JANGAN update record jika API error!
+      // Hanya rethrow error tanpa mengupdate local data
+      throw Exception('Check-out failed: $e');
       
-      // Calculate duration
-      final duration = today.difference(record.checkInTime!).inMinutes;
-      
-      final updatedRecord = record.copyWith(
-        checkOutTime: today,
-        duration: duration,
-        status: 'completed',
-        updatedAt: today,
-      );
-      
-      await saveRecord(updatedRecord);
-      return updatedRecord;
+      // NOTE: Removed auto-fallback karena menyebabkan false checkout
+      // User harus retry checkout jika gagal, jangan auto-update record
     }
   }
 
@@ -377,27 +450,30 @@ class AttendanceService {
     DateTime? startDate,
     DateTime? endDate,
   }) async {
-    final start = startDate ?? DateTime.now().subtract(const Duration(days: 30));
+    final start =
+        startDate ?? DateTime.now().subtract(const Duration(days: 30));
     final end = endDate ?? DateTime.now();
-    
+
     final records = await getRecordsByDateRange(start, end);
-    
+
     final totalDays = records.length;
     final completedDays = records.where((r) => r.isCompleted).length;
     final totalWorkingMinutes = records
         .where((r) => r.isCompleted)
         .fold(0, (sum, r) => sum + r.workingMinutes);
-    
-    final averageWorkingMinutes = completedDays > 0 
-        ? totalWorkingMinutes ~/ completedDays 
+
+    final averageWorkingMinutes = completedDays > 0
+        ? totalWorkingMinutes ~/ completedDays
         : 0;
-    
+
     return {
       'totalDays': totalDays,
       'completedDays': completedDays,
       'totalWorkingMinutes': totalWorkingMinutes,
       'averageWorkingMinutes': averageWorkingMinutes,
-      'completionRate': totalDays > 0 ? (completedDays / totalDays * 100).round() : 0,
+      'completionRate': totalDays > 0
+          ? (completedDays / totalDays * 100).round()
+          : 0,
     };
   }
 
@@ -422,14 +498,16 @@ class AttendanceService {
       // Build query parameters
       String url = '${Env.apiBaseUrl}/attendances';
       List<String> queryParams = [];
-      
+
       if (startDate != null) {
-        queryParams.add('start_date=${startDate.toIso8601String().split('T')[0]}');
+        queryParams.add(
+          'start_date=${startDate.toIso8601String().split('T')[0]}',
+        );
       }
       if (endDate != null) {
         queryParams.add('end_date=${endDate.toIso8601String().split('T')[0]}');
       }
-      
+
       if (queryParams.isNotEmpty) {
         url += '?${queryParams.join('&')}';
       }
@@ -450,10 +528,12 @@ class AttendanceService {
         final Map<String, dynamic> responseData = jsonDecode(response.body);
         if (responseData['success'] == true && responseData['data'] != null) {
           final List<dynamic> records = responseData['data'];
-          return records.map((record) => AttendanceRecord.fromJson(record)).toList();
+          return records
+              .map((record) => AttendanceRecord.fromJson(record))
+              .toList();
         }
       }
-      
+
       return [];
     } catch (e) {
       print('Error fetching calendar attendance data: $e');
@@ -462,10 +542,12 @@ class AttendanceService {
   }
 
   // Get attendance records for a specific date
-  Future<List<AttendanceRecord>> getAttendanceRecordsForDate(DateTime date) async {
+  Future<List<AttendanceRecord>> getAttendanceRecordsForDate(
+    DateTime date,
+  ) async {
     final startOfDay = DateTime(date.year, date.month, date.day);
     final endOfDay = startOfDay.add(const Duration(days: 1));
-    
+
     return await getAttendanceRecordsForCalendar(
       startDate: startOfDay,
       endDate: endOfDay,
@@ -473,9 +555,11 @@ class AttendanceService {
   }
 
   // Get attendance records for a week
-  Future<List<AttendanceRecord>> getAttendanceRecordsForWeek(DateTime weekStart) async {
+  Future<List<AttendanceRecord>> getAttendanceRecordsForWeek(
+    DateTime weekStart,
+  ) async {
     final weekEnd = weekStart.add(const Duration(days: 6));
-    
+
     return await getAttendanceRecordsForCalendar(
       startDate: weekStart,
       endDate: weekEnd,
@@ -483,10 +567,12 @@ class AttendanceService {
   }
 
   // Get attendance records for a month
-  Future<List<AttendanceRecord>> getAttendanceRecordsForMonth(DateTime month) async {
+  Future<List<AttendanceRecord>> getAttendanceRecordsForMonth(
+    DateTime month,
+  ) async {
     final startOfMonth = DateTime(month.year, month.month, 1);
     final endOfMonth = DateTime(month.year, month.month + 1, 0);
-    
+
     return await getAttendanceRecordsForCalendar(
       startDate: startOfMonth,
       endDate: endOfMonth,

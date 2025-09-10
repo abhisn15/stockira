@@ -1,3 +1,47 @@
+class BreakSession {
+  final DateTime startTime;
+  final DateTime? endTime;
+  final int? duration; // in minutes
+
+  BreakSession({
+    required this.startTime,
+    this.endTime,
+    this.duration,
+  });
+
+  bool get isActive => endTime == null;
+
+  int get actualDuration => duration ?? (endTime?.difference(startTime).inMinutes ?? 0);
+
+  Map<String, dynamic> toJson() {
+    return {
+      'start_time': startTime.toIso8601String(),
+      'end_time': endTime?.toIso8601String(),
+      'duration': duration,
+    };
+  }
+
+  factory BreakSession.fromJson(Map<String, dynamic> json) {
+    return BreakSession(
+      startTime: DateTime.parse(json['start_time']),
+      endTime: json['end_time'] != null ? DateTime.parse(json['end_time']) : null,
+      duration: json['duration'],
+    );
+  }
+
+  BreakSession copyWith({
+    DateTime? startTime,
+    DateTime? endTime,
+    int? duration,
+  }) {
+    return BreakSession(
+      startTime: startTime ?? this.startTime,
+      endTime: endTime ?? this.endTime,
+      duration: duration ?? this.duration,
+    );
+  }
+}
+
 class AttendanceRecord {
   final dynamic id; // Can be String or int
   final int? employeeId;
@@ -14,6 +58,12 @@ class AttendanceRecord {
   final String? note;
   final DateTime? createdAt;
   final DateTime? updatedAt;
+  
+  // Break/rest functionality
+  final bool isOnBreak;
+  final DateTime? breakStartTime;
+  final int totalBreakMinutes; // total break time in minutes
+  final List<BreakSession> breakSessions;
 
   AttendanceRecord({
     required this.id,
@@ -31,6 +81,10 @@ class AttendanceRecord {
     this.note,
     this.createdAt,
     this.updatedAt,
+    this.isOnBreak = false,
+    this.breakStartTime,
+    this.totalBreakMinutes = 0,
+    this.breakSessions = const [],
   });
 
   Map<String, dynamic> toJson() {
@@ -50,6 +104,10 @@ class AttendanceRecord {
       'note': note,
       'created_at': createdAt?.toIso8601String(),
       'updated_at': updatedAt?.toIso8601String(),
+      'is_on_break': isOnBreak,
+      'break_start_time': breakStartTime?.toIso8601String(),
+      'total_break_minutes': totalBreakMinutes,
+      'break_sessions': breakSessions.map((session) => session.toJson()).toList(),
     };
   }
 
@@ -70,6 +128,12 @@ class AttendanceRecord {
       note: json['note'],
       createdAt: json['created_at'] != null ? DateTime.parse(json['created_at']) : null,
       updatedAt: json['updated_at'] != null ? DateTime.parse(json['updated_at']) : null,
+      isOnBreak: json['is_on_break'] ?? false,
+      breakStartTime: json['break_start_time'] != null ? DateTime.parse(json['break_start_time']) : null,
+      totalBreakMinutes: json['total_break_minutes'] ?? 0,
+      breakSessions: (json['break_sessions'] as List<dynamic>?)
+          ?.map((session) => BreakSession.fromJson(session as Map<String, dynamic>))
+          .toList() ?? [],
     );
   }
 
@@ -89,13 +153,18 @@ class AttendanceRecord {
     String? note,
     DateTime? createdAt,
     DateTime? updatedAt,
+    bool? isOnBreak,
+    DateTime? breakStartTime,
+    int? totalBreakMinutes,
+    List<BreakSession>? breakSessions,
+    bool clearCheckOutTime = false, // ✅ Explicit parameter for clearing checkout time
   }) {
     return AttendanceRecord(
       id: id ?? this.id,
       employeeId: employeeId ?? this.employeeId,
       date: date ?? this.date,
       checkInTime: checkInTime ?? this.checkInTime,
-      checkOutTime: checkOutTime ?? this.checkOutTime,
+      checkOutTime: clearCheckOutTime ? null : (checkOutTime ?? this.checkOutTime), // ✅ Explicit null handling
       storeId: storeId ?? this.storeId,
       storeName: storeName ?? this.storeName,
       storeAddress: storeAddress ?? this.storeAddress,
@@ -106,6 +175,10 @@ class AttendanceRecord {
       note: note ?? this.note,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
+      isOnBreak: isOnBreak ?? this.isOnBreak,
+      breakStartTime: breakStartTime ?? this.breakStartTime,
+      totalBreakMinutes: totalBreakMinutes ?? this.totalBreakMinutes,
+      breakSessions: breakSessions ?? this.breakSessions,
     );
   }
 
@@ -114,9 +187,20 @@ class AttendanceRecord {
   bool get isCompleted => status == 'completed';
 
   int get workingMinutes {
-    if (checkInTime == null || checkOutTime == null) return 0;
+    if (checkInTime == null) return 0;
     
-    return checkOutTime!.difference(checkInTime!).inMinutes;
+    final endTime = checkOutTime ?? DateTime.now();
+    final totalMinutes = endTime.difference(checkInTime!).inMinutes;
+    
+    // Subtract break time
+    return totalMinutes - totalBreakMinutes;
+  }
+
+  int get totalMinutesIncludingBreak {
+    if (checkInTime == null) return 0;
+    
+    final endTime = checkOutTime ?? DateTime.now();
+    return endTime.difference(checkInTime!).inMinutes;
   }
 
   String get workingHoursFormatted {
@@ -125,4 +209,5 @@ class AttendanceRecord {
     final remainingMinutes = minutes % 60;
     return '${hours}h ${remainingMinutes}m';
   }
+
 }

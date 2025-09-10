@@ -55,6 +55,10 @@
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
 	<string>This app needs access to location to track attendance check-in and check-out locations.</string>
 	
+	<!-- Google Maps API Key -->
+	<key>GMSApiKey</key>
+	<string>AIzaSyDQaKNL--c9iWfMAeGrW01Rai-_NeVoziE</string>
+	
 	<!-- Network permissions for API access -->
 	<key>NSAppTransportSecurity</key>
 	<dict>

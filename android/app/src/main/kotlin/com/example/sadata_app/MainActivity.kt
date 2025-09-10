@@ -1,4 +1,4 @@
-package com.example.sadata_app
+package com.stockira
 
 import io.flutter.embedding.android.FlutterActivity
 
