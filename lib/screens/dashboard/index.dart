@@ -1,6 +1,8 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:stockira/screens/attandance/index.dart';
-import 'package:stockira/screens/attendance/maps_checkin_screen.dart';
+import 'package:stockira/screens/attendance/maps_checkin_simple.dart';
 import 'package:stockira/screens/permit/index.dart';
 import 'package:stockira/screens/itinerary/index.dart';
 import 'package:stockira/screens/reports/Survey/index.dart';
@@ -9,8 +11,12 @@ import 'package:stockira/screens/url_setting/index.dart';
 import 'package:stockira/services/attendance_service.dart';
 import 'package:stockira/services/auth_service.dart';
 import 'package:stockira/services/itinerary_service.dart';
+import 'package:stockira/services/maps_service.dart';
+import 'package:stockira/config/maps_config.dart';
 import 'package:stockira/models/attendance_record.dart';
 import 'package:stockira/models/itinerary.dart';
+import 'package:stockira/widgets/unified_timeline_widget.dart';
+import 'package:stockira/widgets/realtime_timer_widget.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
@@ -493,10 +499,11 @@ class DashboardScreen extends StatefulWidget {
 class _DashboardScreenState extends State<DashboardScreen> {
   final theme = const Color.fromARGB(255, 41, 189, 206);
   final AttendanceService _attendanceService = AttendanceService();
+  final MapsService _mapsService = MapsService();
 
   int _selectedIndex = 0;
 
-  // Dummy activities for demonstration
+  // Activities stored in localStorage
   List<Map<String, dynamic>> activities = [];
 
   // Itinerary data
@@ -508,13 +515,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
   // Check-in/check-out state
   bool isCheckedIn = false;
   AttendanceRecord? todayRecord;
-
-  // Break functionality state
-  bool isOnBreak = false;
-  bool canTakeBreak = false;
-  int totalBreakMinutes = 0;
-  int remainingBreakMinutes = 60;
-  String currentBreakDuration = '0m';
 
   // Filter states
   DateTime? filterStartDate;
@@ -534,6 +534,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
   @override
   void initState() {
     super.initState();
+    
+    // Debug security configuration on startup
+    _mapsService.debugSecurity();
+    
+    _loadActivitiesFromStorage();
     _loadTodayRecord();
     _loadProfile();
     _loadItineraryCount();
@@ -545,26 +550,66 @@ class _DashboardScreenState extends State<DashboardScreen> {
         itineraryCount: itineraryCount,
         itineraryDate: itineraryDate,
         onReload: _handleReload,
-        activities: activities,
+        activities:
+            _getTodayActivities(), // Only show today's activities in home
         onShowAllFeatures: _showAllFeaturesBottomSheet,
         onShowFilters: _showFiltersDialog,
         name: name,
+        profilePosition: profilePosition,
         profileEmail: profileEmail,
         profilePhotoUrl: profilePhotoUrl,
         itineraryList: itineraryList,
         todayRecord: todayRecord,
-        isOnBreak: isOnBreak,
-        canTakeBreak: canTakeBreak,
-        totalBreakMinutes: totalBreakMinutes,
-        remainingBreakMinutes: remainingBreakMinutes,
-        currentBreakDuration: currentBreakDuration,
-        onStartBreak: _handleStartBreak,
-        onEndBreak: _handleEndBreak,
       ),
       Center(child: Text('Payslip', style: TextStyle(fontSize: 24))),
-      ActivityScreen(activities: activities, onReload: _handleReload),
+      ActivityScreen(), // Remove activities parameter, will handle filtering internally
     ];
   }
+
+  // Load activities from SharedPreferences
+  Future<void> _loadActivitiesFromStorage() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final activitiesJson = prefs.getString('user_activities');
+      if (activitiesJson != null) {
+        final List<dynamic> activitiesList = json.decode(activitiesJson);
+        setState(() {
+          activities = activitiesList
+              .map((item) => Map<String, dynamic>.from(item))
+              .toList();
+        });
+      }
+    } catch (e) {
+      print('Error loading activities from storage: $e');
+    }
+  }
+
+  // Save activities to SharedPreferences
+  Future<void> _saveActivitiesToStorage() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final activitiesJson = json.encode(activities);
+      await prefs.setString('user_activities', activitiesJson);
+    } catch (e) {
+      print('Error saving activities to storage: $e');
+    }
+  }
+
+  // Get only today's activities for home screen
+  List<Map<String, dynamic>> _getTodayActivities() {
+    final today = DateTime.now();
+    return activities.where((activity) {
+      // Check if activity has date information and matches today
+      if (activity['checkInTime'] != null) {
+        final checkInTime = activity['checkInTime'] as DateTime;
+        return checkInTime.year == today.year &&
+            checkInTime.month == today.month &&
+            checkInTime.day == today.day;
+      }
+      return false;
+    }).toList();
+  }
+
 
   Future<void> _loadTodayRecord() async {
     try {
@@ -577,12 +622,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
       setState(() {
         todayRecord = record;
         isCheckedIn = record?.isCheckedIn ?? false;
-        // TODO: Implement break functionality
-        isOnBreak = false; // breakStatus['isOnBreak'] ?? false;
-        canTakeBreak = false; // breakStatus['canTakeBreak'] ?? false;
-        totalBreakMinutes = 0; // breakStatus['totalBreakMinutes'] ?? 0;
-        remainingBreakMinutes = 60; // breakStatus['remainingBreakMinutes'] ?? 60;
-        currentBreakDuration = '0m'; // breakStatus['currentBreakDuration'] ?? '0m';
       });
       
       print('🎯 State updated - isCheckedIn: $isCheckedIn');
@@ -631,7 +670,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
         isLoadingItinerary = false;
       });
 
-      print('Dashboard - Itinerary count loaded: ${response.data[0].stores.length}');
+      print(
+        'Dashboard - Itinerary count loaded: ${response.data[0].stores.length}',
+      );
       print('Dashboard - itineraryList length: ${itineraryList?.length}');
       print('Dashboard - itineraryCount: $itineraryCount');
     } catch (e) {
@@ -642,114 +683,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
         itineraryDate = DateTime.now();
         isLoadingItinerary = false;
       });
-    }
-  }
-
-  Future<void> _handleStartBreak() async {
-    try {
-      showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (context) => const AlertDialog(
-          content: Row(
-            children: [
-              CircularProgressIndicator(),
-              SizedBox(width: 20),
-              Text('Starting break...'),
-            ],
-          ),
-        ),
-      );
-
-      // TODO: Implement break functionality in AttendanceService
-      // await _attendanceService.startBreak();
-      await _loadTodayRecord();
-
-      if (mounted) {
-        Navigator.pop(context); // Close loading dialog
-        
-        setState(() {
-          activities.insert(0, {
-            'icon': Icons.coffee,
-            'title': 'Break Started',
-            'subtitle': 'Rest time: ${remainingBreakMinutes}m remaining',
-            'time': 'Just now',
-            'color': Colors.orange,
-            'type': 'break_start',
-          });
-        });
-
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Break started successfully'),
-            backgroundColor: Colors.orange,
-          ),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        Navigator.pop(context); // Close loading dialog
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to start break: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    }
-  }
-
-  Future<void> _handleEndBreak() async {
-    try {
-      showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (context) => const AlertDialog(
-          content: Row(
-            children: [
-              CircularProgressIndicator(),
-              SizedBox(width: 20),
-              Text('Ending break...'),
-            ],
-          ),
-        ),
-      );
-
-      // TODO: Implement break functionality in AttendanceService
-      // await _attendanceService.endBreak();
-      await _loadTodayRecord();
-
-      if (mounted) {
-        Navigator.pop(context); // Close loading dialog
-        
-        setState(() {
-          activities.insert(0, {
-            'icon': Icons.work,
-            'title': 'Break Ended',
-            'subtitle': 'Total break time: ${totalBreakMinutes}m',
-            'time': 'Just now',
-            'color': Colors.green,
-            'type': 'break_end',
-          });
-        });
-
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Break ended successfully'),
-            backgroundColor: Colors.green,
-          ),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        Navigator.pop(context); // Close loading dialog
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to end break: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
     }
   }
 
@@ -769,6 +702,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
         break;
       case 'force_checkin':
         _handleForceCheckinState();
+        break;
+      case 'debug_security':
+        _handleDebugSecurity();
         break;
       case 'logout':
         _showLogoutDialog(context);
@@ -1116,7 +1052,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
         print('❌ No itinerary available');
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('No itinerary available. Please check your schedule.'),
+            content: Text(
+              'No itinerary available. Please check your schedule.',
+            ),
             backgroundColor: Colors.orange,
           ),
         );
@@ -1125,12 +1063,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
       print('📍 Navigating to maps check-in screen...');
       
-      // Navigate directly to maps check-in screen
+      // Navigate directly to simplified maps check-in screen
       final result = await Navigator.of(context).push<bool>(
         MaterialPageRoute(
-          builder: (context) => MapsCheckinScreen(
-            itineraryList: itineraryList!,
-          ),
+          builder: (context) =>
+              MapsCheckinSimpleScreen(itineraryList: itineraryList!),
         ),
       );
 
@@ -1175,8 +1112,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
             'checkInTime': now,
             'color': Colors.green,
             'type': 'checkin',
+            'timestamp': now,
           });
         });
+        _saveActivitiesToStorage();
         
         print('✅ Dashboard updated successfully');
         print('🏪 Current store: ${todayRecord?.storeName}');
@@ -1207,12 +1146,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
       await _loadTodayRecord();
       
       // If we successfully have the check-in data and isCheckedIn is true, break
-      if (todayRecord?.checkInTime != null && todayRecord?.checkOutTime == null) {
+      if (todayRecord?.checkInTime != null &&
+          todayRecord?.checkOutTime == null) {
         print('✅ Successfully loaded ACTIVE check-in data on attempt ${i + 1}');
         break;
       }
       
-      print('⚠️ Attempt ${i + 1}: checkIn=${todayRecord?.checkInTime}, checkOut=${todayRecord?.checkOutTime}, isCheckedIn=${todayRecord?.isCheckedIn}');
+      print(
+        '⚠️ Attempt ${i + 1}: checkIn=${todayRecord?.checkInTime}, checkOut=${todayRecord?.checkOutTime}, isCheckedIn=${todayRecord?.isCheckedIn}',
+      );
       
       // Wait before retry
       if (i < 2) {
@@ -1238,14 +1180,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
     await _loadTodayRecord();
   }
 
-
   Future<void> _handleCheckOut() async {
     try {
       print('🔴 DASHBOARD CHECKOUT CALLED!');
-      print('✅ Current state: isCheckedIn=$isCheckedIn, store=${todayRecord?.storeName}');
+      print(
+        '✅ Current state: isCheckedIn=$isCheckedIn, store=${todayRecord?.storeName}',
+      );
       
       // ✅ Guard: pastikan benar-benar sedang checked-in
-      if (!isCheckedIn || todayRecord == null || todayRecord!.checkInTime == null) {
+      if (!isCheckedIn ||
+          todayRecord == null ||
+          todayRecord!.checkInTime == null) {
         print('❌ Invalid checkout attempt - not currently checked in');
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -1279,29 +1224,31 @@ class _DashboardScreenState extends State<DashboardScreen> {
             'duration': todayRecord?.workingHoursFormatted ?? '-',
             'color': Colors.red,
             'type': 'checkout',
+            'timestamp': now,
           });
         });
+        _saveActivitiesToStorage();
 
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Successfully checked out')),
         );
       }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error checking out: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Error checking out: $e')));
     }
   }
 
   String _formatTimeForActivity(DateTime dateTime) {
-    final hour = dateTime.hour == 0 ? 12 : (dateTime.hour > 12 ? dateTime.hour - 12 : dateTime.hour);
+    final hour = dateTime.hour == 0
+        ? 12
+        : (dateTime.hour > 12 ? dateTime.hour - 12 : dateTime.hour);
     final minute = dateTime.minute.toString().padLeft(2, '0');
     final period = dateTime.hour < 12 ? 'AM' : 'PM';
     
     return '$hour:$minute $period';
   }
-
-
 
   Future<Map<String, dynamic>?> _showCheckOutForm() async {
     final ImagePicker picker = ImagePicker();
@@ -1791,7 +1738,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Clear Attendance Data'),
-        content: const Text('This will clear all old attendance data and reset state. Continue?'),
+        content: const Text(
+          'This will clear all old attendance data and reset state. Continue?',
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
@@ -1831,11 +1780,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final allRecords = await _attendanceService.getAllRecords();
     final today = DateTime.now();
     
-    final todayRecords = allRecords.where((r) =>
+    final todayRecords = allRecords
+        .where(
+          (r) =>
       r.date.year == today.year &&
       r.date.month == today.month &&
-      r.date.day == today.day
-    ).toList();
+              r.date.day == today.day,
+        )
+        .toList();
     
     if (todayRecords.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -1891,7 +1843,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
         isCheckedIn = selectedRecord.isCheckedIn;
       });
       
-      print('✅ Manually set state: isCheckedIn=$isCheckedIn, store=${selectedRecord.storeName}');
+      print(
+        '✅ Manually set state: isCheckedIn=$isCheckedIn, store=${selectedRecord.storeName}',
+      );
       
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -1900,6 +1854,117 @@ class _DashboardScreenState extends State<DashboardScreen> {
         ),
       );
     }
+  }
+  
+  // Method untuk debug security configuration
+  void _handleDebugSecurity() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Row(
+          children: [
+            Icon(Icons.security, color: Colors.green),
+            SizedBox(width: 8),
+            Text('Security Status'),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _buildSecurityItem(
+              'Maps API Key',
+              _mapsService.isSecurelyConfigured ? 'Configured' : 'Missing',
+              _mapsService.isSecurelyConfigured ? Colors.green : Colors.red,
+            ),
+            SizedBox(height: 8),
+            _buildSecurityItem(
+              'Platform',
+              MapsConfig.platformName,
+              Colors.blue,
+            ),
+            SizedBox(height: 8),
+            _buildSecurityItem(
+              'API Key (Masked)',
+              _mapsService.maskedApiKey,
+              Colors.grey,
+            ),
+            SizedBox(height: 8),
+            _buildSecurityItem(
+              'Map ID (Masked)',
+              _mapsService.maskedMapId,
+              Colors.grey,
+            ),
+            SizedBox(height: 8),
+            _buildSecurityItem(
+              'Environment',
+              dotenv.env.isNotEmpty ? 'Loaded' : 'Not Loaded',
+              dotenv.env.isNotEmpty ? Colors.green : Colors.orange,
+            ),
+            SizedBox(height: 16),
+            Container(
+              padding: EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Colors.green.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.green.withOpacity(0.3)),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.check_circle, color: Colors.green, size: 16),
+                  SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'API keys are secured via environment variables and not exposed in source code',
+                      style: TextStyle(fontSize: 12, color: Colors.green[700]),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+              _mapsService.debugSecurity();
+              MapsConfig.debugConfiguration();
+            },
+            child: Text('Debug Console'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+  
+  Widget _buildSecurityItem(String label, String value, Color color) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(label, style: TextStyle(fontWeight: FontWeight.w500)),
+        Container(
+          padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          decoration: BoxDecoration(
+            color: color.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(6),
+            border: Border.all(color: color.withOpacity(0.3)),
+          ),
+          child: Text(
+            value,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: color,
+            ),
+          ),
+        ),
+      ],
+    );
   }
 
   void _showAllFeaturesBottomSheet(BuildContext context) {
@@ -2125,16 +2190,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
       profilePhotoUrl: profilePhotoUrl,
       itineraryList: itineraryList,
       todayRecord: todayRecord,
-      isOnBreak: isOnBreak,
-      canTakeBreak: canTakeBreak,
-      totalBreakMinutes: totalBreakMinutes,
-      remainingBreakMinutes: remainingBreakMinutes,
-      currentBreakDuration: currentBreakDuration,
-      onStartBreak: _handleStartBreak,
-      onEndBreak: _handleEndBreak,
     );
-    
-    print('🔧 Build called - isCheckedIn: $isCheckedIn, store: ${todayRecord?.storeName}');
+
+    print(
+      '🔧 Build called - isCheckedIn: $isCheckedIn, store: ${todayRecord?.storeName}',
+    );
     return Scaffold(
       body: _screens[_selectedIndex],
       bottomNavigationBar: BottomNavigationBar(
@@ -2183,13 +2243,7 @@ class DashboardHome extends StatelessWidget {
   final String? profilePhotoUrl;
   final List<Itinerary>? itineraryList;
   final AttendanceRecord? todayRecord;
-  final bool isOnBreak;
-  final bool canTakeBreak;
-  final int totalBreakMinutes;
-  final int remainingBreakMinutes;
-  final String currentBreakDuration;
-  final VoidCallback onStartBreak;
-  final VoidCallback onEndBreak;
+  
 
   const DashboardHome({
     super.key,
@@ -2208,18 +2262,17 @@ class DashboardHome extends StatelessWidget {
     this.profilePhotoUrl,
     this.itineraryList,
     this.todayRecord,
-    required this.isOnBreak,
-    required this.canTakeBreak,
-    required this.totalBreakMinutes,
-    required this.remainingBreakMinutes,
-    required this.currentBreakDuration,
-    required this.onStartBreak,
-    required this.onEndBreak,
+    
   });
 
   @override
   Widget build(BuildContext context) {
-    return SingleChildScrollView(
+    return RefreshIndicator(
+      onRefresh: () async {
+        onReload();
+      },
+      child: SingleChildScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.all(16.0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -2230,6 +2283,7 @@ class DashboardHome extends StatelessWidget {
           const SizedBox(height: 20),
           _buildRecentActivities(context),
         ],
+        ),
       ),
     );
   }
@@ -2508,12 +2562,19 @@ class DashboardHome extends StatelessWidget {
                                 value: 'force_checkin',
                                 child: Row(
                                   children: [
-                                    Icon(
-                                      Icons.build,
-                                      color: Colors.blue,
-                                    ),
+                                    Icon(Icons.build, color: Colors.blue),
                                     SizedBox(width: 12),
                                     Text('Fix Check-in State'),
+                                  ],
+                                ),
+                              ),
+                              const PopupMenuItem<String>(
+                                value: 'debug_security',
+                                child: Row(
+                                  children: [
+                                    Icon(Icons.security, color: Colors.green),
+                                    SizedBox(width: 12),
+                                    Text('Security Status'),
                                   ],
                                 ),
                               ),
@@ -2657,7 +2718,8 @@ class DashboardHome extends StatelessWidget {
     print('   - todayRecord.isCheckedIn: ${todayRecord?.isCheckedIn}');
     
     // ✅ Triple check kondisi untuk checkout card
-    final shouldShowCheckoutCard = todayRecord != null && 
+    final shouldShowCheckoutCard =
+        todayRecord != null &&
                                   todayRecord!.checkInTime != null && 
                                   todayRecord!.checkOutTime == null &&
                                   todayRecord!.isCheckedIn &&
@@ -2735,8 +2797,7 @@ class DashboardHome extends StatelessWidget {
                 color: Colors.grey,
               ),
               const SizedBox(width: 6),
-              Text(
-                () {
+              Text(() {
                   if (isCheckedIn && todayRecord?.checkInTime != null) {
                     final checkInTime = todayRecord!.checkInTime!;
                     return 'Checked in at ${_formatTime(checkInTime)}';
@@ -2745,9 +2806,7 @@ class DashboardHome extends StatelessWidget {
                   } else {
                     return '-';
                   }
-                }(),
-                style: const TextStyle(fontSize: 14, color: Colors.black54),
-              ),
+              }(), style: const TextStyle(fontSize: 14, color: Colors.black54)),
             ],
           ),
           const SizedBox(height: 18),
@@ -2771,9 +2830,6 @@ class DashboardHome extends StatelessWidget {
 
   Widget _buildCheckedInCard(BuildContext context) {
     final checkInTime = todayRecord!.checkInTime!;
-    final workingDuration = todayRecord!.workingHoursFormatted;
-    // TODO: Implement totalHoursFormattedIncludingBreak in AttendanceRecord
-    final totalDuration = todayRecord!.workingHoursFormatted; // temporary fallback
 
     return Container(
       width: double.infinity,
@@ -2801,11 +2857,7 @@ class DashboardHome extends StatelessWidget {
                   color: Colors.green.withOpacity(0.1),
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: const Icon(
-                  Icons.store,
-                  color: Colors.green,
-                  size: 24,
-                ),
+                child: const Icon(Icons.store, color: Colors.green, size: 24),
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -2821,10 +2873,7 @@ class DashboardHome extends StatelessWidget {
                     ),
                     Text(
                       'Checked in at ${_formatTime(checkInTime)}',
-                      style: TextStyle(
-                        fontSize: 14,
-                        color: Colors.grey[600],
-                      ),
+                      style: TextStyle(fontSize: 14, color: Colors.grey[600]),
                     ),
                   ],
                 ),
@@ -2839,19 +2888,18 @@ class DashboardHome extends StatelessWidget {
 
           const SizedBox(height: 16),
 
-          // Working duration and break info
+          // Working time only
           Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: Colors.grey[50],
+              color: Colors.green.withOpacity(0.1),
               borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: Colors.grey[200]!),
+              border: Border.all(color: Colors.green.withOpacity(0.3)),
             ),
-            child: Column(
+            child: Row(
               children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
+                Icon(Icons.work, size: 20, color: Colors.green),
+                const SizedBox(width: 8),
                     Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -2859,71 +2907,24 @@ class DashboardHome extends StatelessWidget {
                           'Working Time',
                           style: TextStyle(
                             fontSize: 12,
-                            color: Colors.grey[600],
-                          ),
-                        ),
-                        Text(
-                          workingDuration,
-                          style: const TextStyle(
-                            fontSize: 16,
+                        color: Colors.green[700],
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    RealtimeTimerWidget(
+                      attendanceRecord: todayRecord,
+                      textStyle: const TextStyle(
+                        fontSize: 18,
                             fontWeight: FontWeight.bold,
                             color: Colors.green,
                           ),
                         ),
                       ],
-                    ),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        Text(
-                          'Total Duration',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Colors.grey[600],
-                          ),
-                        ),
-                        Text(
-                          totalDuration,
-                          style: const TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.blue,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
                 ),
-                if (totalBreakMinutes > 0) ...[
-                  const SizedBox(height: 8),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(Icons.coffee, size: 16, color: Colors.orange[600]),
-                      const SizedBox(width: 4),
-                      Text(
-                        'Break time: ${totalBreakMinutes}m', // TODO: Implement breakTimeFormatted in AttendanceRecord
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: Colors.orange[600],
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
               ],
             ),
           ),
-
-          const SizedBox(height: 16),
-
-          // Break controls
-          if (isOnBreak)
-            _buildBreakActiveCard(context)
-          else if (canTakeBreak)
-            _buildBreakAvailableCard(context)
-          else if (totalBreakMinutes >= 60)
-            _buildBreakExhaustedCard(context),
 
           const SizedBox(height: 16),
 
@@ -2946,138 +2947,10 @@ class DashboardHome extends StatelessWidget {
     );
   }
 
-  Widget _buildBreakActiveCard(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.orange[50],
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Colors.orange[200]!),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(Icons.coffee, color: Colors.orange[600], size: 20),
-              const SizedBox(width: 8),
-              Text(
-                'On Break',
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.orange[700],
-                ),
-              ),
-              const Spacer(),
-              Text(
-                currentBreakDuration,
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.orange[700],
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton(
-              onPressed: onEndBreak,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.orange[600],
-                foregroundColor: Colors.white,
-                minimumSize: const Size(0, 36),
-              ),
-              child: const Text('End Break'),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildBreakAvailableCard(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.blue[50],
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Colors.blue[200]!),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(Icons.free_breakfast, color: Colors.blue[600], size: 20),
-              const SizedBox(width: 8),
-              Text(
-                'Break Available',
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.blue[700],
-                ),
-              ),
-              const Spacer(),
-              Text(
-                '${remainingBreakMinutes}m left',
-                style: TextStyle(
-                  fontSize: 12,
-                  color: Colors.blue[600],
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton(
-              onPressed: onStartBreak,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.blue[600],
-                foregroundColor: Colors.white,
-                minimumSize: const Size(0, 36),
-              ),
-              child: const Text('Take Break'),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildBreakExhaustedCard(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.grey[100],
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Colors.grey[300]!),
-      ),
-      child: Row(
-        children: [
-          Icon(Icons.no_food, color: Colors.grey[600], size: 20),
-          const SizedBox(width: 8),
-          Text(
-            'Break time exhausted (60m used)',
-            style: TextStyle(
-              fontSize: 14,
-              color: Colors.grey[700],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   String _formatTime(DateTime dateTime) {
-    final hour = dateTime.hour == 0 ? 12 : (dateTime.hour > 12 ? dateTime.hour - 12 : dateTime.hour);
+    final hour = dateTime.hour == 0
+        ? 12
+        : (dateTime.hour > 12 ? dateTime.hour - 12 : dateTime.hour);
     final minute = dateTime.minute.toString().padLeft(2, '0');
     final period = dateTime.hour < 12 ? 'AM' : 'PM';
     
@@ -3093,8 +2966,21 @@ class DashboardHome extends StatelessWidget {
           style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
         ),
         const SizedBox(height: 12),
+        // Use unified timeline widget
+        UnifiedTimelineWidget(
+          attendanceRecord: todayRecord,
+        ),
+        const SizedBox(height: 16),
+        // Keep old activities as backup/additional info
+        if (activities.isNotEmpty) ...[
+          const Text(
+            'Additional Activities',
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+          ),
+          const SizedBox(height: 8),
+        ],
         activities.isEmpty
-            ? _buildEmptyActivity(context)
+            ? const SizedBox.shrink()
             : Container(
                 decoration: BoxDecoration(
                   color: Colors.white,
@@ -3129,43 +3015,6 @@ class DashboardHome extends StatelessWidget {
     );
   }
 
-  Widget _buildEmptyActivity(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(vertical: 32, horizontal: 16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.grey.withOpacity(0.1),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Column(
-        children: [
-          Icon(Icons.hourglass_empty, size: 64, color: Colors.grey[300]),
-          const SizedBox(height: 16),
-          const Text(
-            "No activities yet",
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-              color: Colors.black54,
-            ),
-          ),
-          const SizedBox(height: 8),
-          const Text(
-            "You haven't performed any activities today. Your check-in, check-out, and other actions will appear here.",
-            style: TextStyle(fontSize: 14, color: Colors.black54),
-            textAlign: TextAlign.center,
-          ),
-        ],
-      ),
-    );
-  }
 
   Widget _buildTimelineActivityItem({
     required IconData icon,
@@ -3201,18 +3050,10 @@ class DashboardHome extends StatelessWidget {
                     color: color,
                     shape: BoxShape.circle,
                   ),
-                  child: Icon(
-                    icon,
-                    color: Colors.white,
-                    size: 12,
-                  ),
+                  child: Icon(icon, color: Colors.white, size: 12),
                 ),
                 if (!isLast) ...[
-                  Container(
-                    width: 2,
-                    height: 20,
-                    color: Colors.grey[300],
-                  ),
+                  Container(width: 2, height: 20, color: Colors.grey[300]),
                 ],
               ],
             ),
@@ -3227,10 +3068,7 @@ class DashboardHome extends StatelessWidget {
               decoration: BoxDecoration(
                 color: color.withOpacity(0.05),
                 borderRadius: BorderRadius.circular(8),
-                border: Border.all(
-                  color: color.withOpacity(0.2),
-                  width: 1,
-                ),
+                border: Border.all(color: color.withOpacity(0.2), width: 1),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -3262,25 +3100,288 @@ class DashboardHome extends StatelessWidget {
   }
 }
 
-class ActivityScreen extends StatelessWidget {
-  final List<Map<String, dynamic>> activities;
-  final VoidCallback onReload;
+class ActivityScreen extends StatefulWidget {
+  const ActivityScreen({super.key});
 
-  const ActivityScreen({
-    super.key,
-    required this.activities,
-    required this.onReload,
-  });
+  @override
+  State<ActivityScreen> createState() => _ActivityScreenState();
+}
+
+class _ActivityScreenState extends State<ActivityScreen> {
+  // Itinerary data
+  List<Itinerary> itineraries = [];
+  bool isLoading = false;
+  String? errorMessage;
+
+  // Task types for dropdown
+  final List<String> taskTypes = [
+    'Check In',
+    'Check Out',
+    'OOS (Out of Stock)',
+    'Promo Tracking',
+    'Display Check',
+    'Price Monitoring',
+    'Competitor Activity',
+    'Store Audit',
+    'Customer Feedback',
+    'Other'
+  ];
+
+  // Selected date for filtering
+  DateTime selectedDate = DateTime.now();
+  String? selectedTaskType;
+
+  // Todo items with timeline
+  List<Map<String, dynamic>> todoItems = [];
+  bool showTodoTimeline = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadItinerariesForDate(selectedDate);
+    _loadTodoItems();
+  }
+
+  Future<void> _loadItinerariesForDate(DateTime date) async {
+    setState(() {
+      isLoading = true;
+      errorMessage = null;
+    });
+
+    try {
+      final dateStr = '${date.year.toString().padLeft(4, '0')}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+      final response = await ItineraryService.getItineraryByDate(dateStr);
+
+      setState(() {
+        if (response.success) {
+          itineraries = response.data;
+        } else {
+          errorMessage = response.message;
+          itineraries = [];
+        }
+        isLoading = false;
+      });
+    } catch (e) {
+      setState(() {
+        errorMessage = 'Failed to load itineraries: ${e.toString()}';
+        itineraries = [];
+        isLoading = false;
+      });
+    }
+  }
+
+  Future<void> _loadTodoItems() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final todoJson = prefs.getString('todo_items');
+      if (todoJson != null) {
+        final List<dynamic> todoList = json.decode(todoJson);
+        setState(() {
+          todoItems = todoList.map((item) => Map<String, dynamic>.from(item)).toList();
+        });
+      }
+    } catch (e) {
+      print('Error loading todo items: $e');
+    }
+  }
+
+  Future<void> _saveTodoItems() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('todo_items', json.encode(todoItems));
+    } catch (e) {
+      print('Error saving todo items: $e');
+    }
+  }
+
+  void _addTodoItem(String task, String storeName, DateTime time) {
+    setState(() {
+      todoItems.add({
+        'id': DateTime.now().millisecondsSinceEpoch,
+        'task': task,
+        'storeName': storeName,
+        'time': time.toIso8601String(),
+        'completed': false,
+        'createdAt': DateTime.now().toIso8601String(),
+      });
+    });
+    _saveTodoItems();
+  }
+
+  void _toggleTodoItem(int id) {
+    setState(() {
+      final index = todoItems.indexWhere((item) => item['id'] == id);
+      if (index != -1) {
+        todoItems[index]['completed'] = !todoItems[index]['completed'];
+      }
+    });
+    _saveTodoItems();
+  }
+
+  void _deleteTodoItem(int id) {
+    setState(() {
+      todoItems.removeWhere((item) => item['id'] == id);
+    });
+    _saveTodoItems();
+  }
+
+  Future<void> _clearAllActivities() async {
+    setState(() {
+      todoItems.clear();
+      itineraries.clear();
+    });
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('todo_items');
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('All activities and todos cleared'))
+    );
+  }
+
+  List<Store> getFilteredStores() {
+    List<Store> allStores = [];
+    for (var itinerary in itineraries) {
+      allStores.addAll(itinerary.stores);
+    }
+
+    if (selectedTaskType != null) {
+      // Filter by task type if needed
+      return allStores;
+    }
+
+    return allStores;
+  }
+
+  void _showDateFilterDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Select Date'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                title: const Text('Selected Date'),
+                subtitle: Text(
+                  '${selectedDate.year}-${selectedDate.month.toString().padLeft(2, '0')}-${selectedDate.day.toString().padLeft(2, '0')}',
+                ),
+                onTap: () async {
+                  final date = await showDatePicker(
+                    context: context,
+                    initialDate: selectedDate,
+                    firstDate: DateTime(2020),
+                    lastDate: DateTime.now(),
+                  );
+                  if (date != null) {
+                    setDialogState(() {
+                      selectedDate = date;
+                    });
+                  }
+                },
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                _loadItinerariesForDate(selectedDate);
+                Navigator.pop(context);
+              },
+              child: const Text('Apply'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showTodoTimelineDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Todo Timeline'),
+        content: Container(
+          width: double.maxFinite,
+          constraints: const BoxConstraints(maxHeight: 400),
+          child: ListView.builder(
+            shrinkWrap: true,
+            itemCount: todoItems.length,
+            itemBuilder: (context, index) {
+              final item = todoItems[index];
+              final time = DateTime.parse(item['time']);
+              final createdAt = DateTime.parse(item['createdAt']);
+
+              return ListTile(
+                leading: Checkbox(
+                  value: item['completed'],
+                  onChanged: (value) => _toggleTodoItem(item['id']),
+                ),
+                title: Text(
+                  '${item['task']} - ${item['storeName']}',
+                  style: TextStyle(
+                    decoration: item['completed'] ? TextDecoration.lineThrough : null,
+                    color: item['completed'] ? Colors.grey : null,
+                  ),
+                ),
+                subtitle: Text(
+                  'Created: ${_formatTime(createdAt)} | Due: ${_formatTime(time)}',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Colors.grey[600],
+                  ),
+                ),
+                trailing: IconButton(
+                  icon: const Icon(Icons.delete, color: Colors.red),
+                  onPressed: () => _deleteTodoItem(item['id']),
+                ),
+              );
+            },
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _formatTime(DateTime time) {
+    return '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}';
+  }
 
   @override
   Widget build(BuildContext context) {
+    final filteredStores = getFilteredStores();
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Activity'),
         actions: [
           IconButton(
+            icon: const Icon(Icons.calendar_today),
+            onPressed: _showDateFilterDialog,
+            tooltip: 'Select Date',
+          ),
+          IconButton(
+            icon: const Icon(Icons.list_alt),
+            onPressed: () => setState(() => showTodoTimeline = !showTodoTimeline),
+            tooltip: 'Todo Timeline',
+          ),
+          IconButton(
+            icon: const Icon(Icons.clear_all),
+            onPressed: _clearAllActivities,
+            tooltip: 'Clear All',
+          ),
+          IconButton(
             icon: const Icon(Icons.refresh, color: Colors.cyan),
-            onPressed: onReload,
+            onPressed: () => _loadItinerariesForDate(selectedDate),
             tooltip: 'Reload',
           ),
         ],
@@ -3290,37 +3391,143 @@ class ActivityScreen extends StatelessWidget {
       ),
       body: Padding(
         padding: const EdgeInsets.all(16.0),
-        child: activities.isEmpty
-            ? _buildEmptyActivity(context)
+        child: Column(
+          children: [
+            // Date and task filter
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.blue.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.blue.withOpacity(0.3)),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.calendar_today, size: 20, color: Colors.blue),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Date: ${selectedDate.year}-${selectedDate.month.toString().padLeft(2, '0')}-${selectedDate.day.toString().padLeft(2, '0')}',
+                    style: const TextStyle(
+                      fontSize: 14,
+                      color: Colors.blue,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                  const Spacer(),
+                  DropdownButton<String>(
+                    value: selectedTaskType,
+                    hint: const Text('All Tasks'),
+                    items: [
+                      const DropdownMenuItem<String>(
+                        value: null,
+                        child: Text('All Tasks'),
+                      ),
+                      ...taskTypes.map((task) => DropdownMenuItem<String>(
+                        value: task,
+                        child: Text(task),
+                      )),
+                    ],
+                    onChanged: (value) => setState(() => selectedTaskType = value),
+                  ),
+                ],
+              ),
+            ),
+
+            const SizedBox(height: 16),
+
+            // Todo Timeline (if enabled)
+            if (showTodoTimeline && todoItems.isNotEmpty) ...[
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.green.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.green.withOpacity(0.3)),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        const Icon(Icons.list_alt, color: Colors.green),
+                        const SizedBox(width: 8),
+                        const Text(
+                          'Todo Timeline',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.green,
+                          ),
+                        ),
+                        const Spacer(),
+                        IconButton(
+                          icon: const Icon(Icons.fullscreen),
+                          onPressed: _showTodoTimelineDialog,
+                          tooltip: 'View Full Timeline',
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    ...todoItems.take(3).map((item) => Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 4),
+                      child: Row(
+                        children: [
+                          Checkbox(
+                            value: item['completed'],
+                            onChanged: (value) => _toggleTodoItem(item['id']),
+                            materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              '${item['task']} - ${item['storeName']}',
+                              style: TextStyle(
+                                fontSize: 12,
+                                decoration: item['completed'] ? TextDecoration.lineThrough : null,
+                                color: item['completed'] ? Colors.grey : null,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    )),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+            ],
+
+            // Store visits list
+            Expanded(
+              child: isLoading
+                  ? const Center(child: CircularProgressIndicator())
+                  : errorMessage != null
+                      ? _buildErrorState(errorMessage!)
+                      : filteredStores.isEmpty
+                          ? _buildEmptyState()
             : ListView.builder(
-                itemCount: activities.length,
+                              itemCount: filteredStores.length,
                 itemBuilder: (context, i) {
-                  final item = activities[i];
-                  return _buildTimelineActivityItem(
-                    icon: item['icon'],
-                    title: item['title'],
-                    subtitle: item['subtitle'],
-                    time: item['time'],
-                    color: item['color'],
-                    isLast: i == activities.length - 1,
-                    type: item['type'],
-                    duration: item['duration'],
-                  );
-                },
+                                final store = filteredStores[i];
+                                return _buildStoreVisitItem(context, store);
+                              },
+                            ),
+            ),
+          ],
               ),
       ),
     );
   }
 
-  Widget _buildEmptyActivity(BuildContext context) {
+  Widget _buildEmptyState() {
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.hourglass_empty, size: 100, color: Colors.grey[300]),
+          Icon(Icons.store, size: 100, color: Colors.grey[300]),
           const SizedBox(height: 24),
           const Text(
-            "No activities yet",
+            "No stores found",
             style: TextStyle(
               fontSize: 20,
               fontWeight: FontWeight.bold,
@@ -3331,7 +3538,7 @@ class ActivityScreen extends StatelessWidget {
           const Padding(
             padding: EdgeInsets.symmetric(horizontal: 24.0),
             child: Text(
-              "You haven't performed any activities yet. Your check-in, check-out, and other actions will be shown here.",
+              "No stores are scheduled for this date. Try selecting a different date or check your itinerary.",
               style: TextStyle(fontSize: 15, color: Colors.black54),
               textAlign: TextAlign.center,
             ),
@@ -3341,114 +3548,203 @@ class ActivityScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildTimelineActivityItem({
-    required IconData icon,
-    required String title,
-    required String subtitle,
-    required String time,
-    required Color color,
-    required bool isLast,
-    String? type,
-    String? duration,
-  }) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
+  Widget _buildErrorState(String error) {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          // Timeline column with time and line
-          SizedBox(
-            width: 60,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                Text(
-                  time,
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.bold,
-                    color: color,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Container(
-                  padding: const EdgeInsets.all(6),
-                  decoration: BoxDecoration(
-                    color: color,
-                    shape: BoxShape.circle,
-                  ),
-                  child: Icon(
-                    icon,
-                    color: Colors.white,
-                    size: 12,
-                  ),
-                ),
-                if (!isLast) ...[
-                  Container(
-                    width: 2,
-                    height: 20,
-                    color: Colors.grey[300],
-                  ),
-                ],
-              ],
+          Icon(Icons.error_outline, size: 100, color: Colors.red[300]),
+          const SizedBox(height: 24),
+          const Text(
+            "Error loading data",
+            style: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+              color: Colors.red,
             ),
           ),
-          
-          const SizedBox(width: 16),
-          
-          // Activity content
-          Expanded(
-            child: Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: color.withOpacity(0.05),
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(
-                  color: color.withOpacity(0.2),
-                  width: 1,
-                ),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        title,
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.bold,
-                          color: color,
-                        ),
-                      ),
-                      if (duration != null && duration != '-')
-                        Text(
-                          duration,
-                          style: TextStyle(
-                            fontSize: 11,
-                            color: Colors.grey[600],
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                    ],
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    subtitle,
-                    style: TextStyle(
-                      fontSize: 13,
-                      color: Colors.grey[700],
-                      height: 1.3,
-                    ),
-                  ),
-                ],
-              ),
+          const SizedBox(height: 12),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 24.0),
+            child: Text(
+              error,
+              style: const TextStyle(fontSize: 15, color: Colors.black54),
+              textAlign: TextAlign.center,
             ),
+          ),
+          const SizedBox(height: 16),
+          ElevatedButton(
+            onPressed: () => _loadItinerariesForDate(selectedDate),
+            child: const Text('Retry'),
           ),
         ],
       ),
     );
   }
-}
 
+  Widget _buildStoreVisitItem(BuildContext context, Store store) {
+    return Card(
+      margin: const EdgeInsets.only(bottom: 12),
+      child: Padding(
+      padding: const EdgeInsets.all(16),
+        child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+            // Store header
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.blue.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Icon(Icons.store, color: Colors.blue),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+            child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                        store.name,
+                        style: const TextStyle(
+                          fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                      Text(
+                        'Code: ${store.code}',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.grey[600],
+                        ),
+                      ),
+                      if (store.address.isNotEmpty) ...[
+                        const SizedBox(height: 2),
+                        Text(
+                          store.address,
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.grey[600],
+                          ),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ],
+            ),
+                ),
+              ],
+          ),
+          
+            const SizedBox(height: 16),
+          
+            // Task dropdown and Add Todo button
+            Row(
+              children: [
+          Expanded(
+            child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+              decoration: BoxDecoration(
+                      border: Border.all(color: Colors.grey[300]!),
+                borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: DropdownButton<String>(
+                      value: selectedTaskType,
+                      hint: const Text('Select Task'),
+                      isExpanded: true,
+                      underline: const SizedBox(),
+                      items: taskTypes.map((task) => DropdownMenuItem<String>(
+                        value: task,
+                        child: Text(task),
+                      )).toList(),
+                      onChanged: (value) {
+                        if (value != null) {
+                          _addTodoItem(value, store.name, DateTime.now());
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text('Added "${value}" task for ${store.name}'))
+                          );
+                        }
+                      },
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                ElevatedButton.icon(
+                  onPressed: () => _addTodoItem('Check In', store.name, DateTime.now()),
+                  icon: const Icon(Icons.add, size: 16),
+                  label: const Text('Check In'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.green,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                          ),
+                        ),
+                    ],
+                  ),
+
+            const SizedBox(height: 12),
+
+            // Check-out button
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: () => _addTodoItem('Check Out', store.name, DateTime.now()),
+                icon: const Icon(Icons.logout, size: 16),
+                label: const Text('Check Out'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: Colors.red,
+                  side: const BorderSide(color: Colors.red),
+                ),
+              ),
+            ),
+
+            // Show pending todos for this store
+            ..._getPendingTodosForStore(store.name).map((todo) => Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.orange.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(color: Colors.orange.withOpacity(0.3)),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.pending, size: 16, color: Colors.orange),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        todo['task'],
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: Colors.orange,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ),
+                  Text(
+                      _formatTime(DateTime.parse(todo['time'])),
+                      style: const TextStyle(
+                        fontSize: 10,
+                        color: Colors.grey,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            )),
+        ],
+        ),
+      ),
+    );
+  }
+
+  List<Map<String, dynamic>> _getPendingTodosForStore(String storeName) {
+    return todoItems.where((todo) =>
+      !todo['completed'] && todo['storeName'] == storeName
+    ).toList();
+  }
+}

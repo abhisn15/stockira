@@ -1,0 +1,10 @@
+# Flutter SDK path (example)
+flutter.sdk=/path/to/flutter
+
+# Google Maps API Keys (SECURE)
+GOOGLE_MAPS_API_KEY_ANDROID=your_android_api_key_here
+GOOGLE_MAPS_API_KEY_IOS=your_ios_api_key_here
+
+# Google Maps Map IDs (SECURE)
+GOOGLE_MAPS_MAP_ID_ANDROID=your_android_map_id_here
+GOOGLE_MAPS_MAP_ID_IOS=your_ios_map_id_here

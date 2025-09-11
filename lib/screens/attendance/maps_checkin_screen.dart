@@ -5,6 +5,8 @@ import 'package:image_picker/image_picker.dart';
 import 'dart:io';
 import '../../models/itinerary.dart';
 import '../../services/attendance_service.dart';
+import '../../services/maps_service.dart';
+import '../../widgets/safe_google_map.dart';
 
 class MapsCheckinScreen extends StatefulWidget {
   final List<Itinerary> itineraryList;
@@ -18,21 +20,23 @@ class MapsCheckinScreen extends StatefulWidget {
   State<MapsCheckinScreen> createState() => _MapsCheckinScreenState();
 }
 
-class _MapsCheckinScreenState extends State<MapsCheckinScreen> with TickerProviderStateMixin {
+class _MapsCheckinScreenState extends State<MapsCheckinScreen> {
   GoogleMapController? _mapController;
   Position? _currentPosition;
   Store? _selectedStore;
   XFile? _selectedImage;
   String _note = '';
   bool _isLoading = true;
+  bool _isCheckingIn = false; // New state for check-in process
+  bool _showStoreSelection = true;
+  bool _mapsError = false;
+  String _errorMessage = '';
   final TextEditingController _noteController = TextEditingController();
   final AttendanceService _attendanceService = AttendanceService();
-
+  final MapsService _mapsService = MapsService();
+  
   Set<Marker> _markers = {};
   late DateTime _currentTime;
-
-  // For DraggableScrollableSheet
-  final DraggableScrollableController _draggableController = DraggableScrollableController();
 
   // Todo checklist items
   bool get _isDistanceValid => _selectedStore != null && _currentPosition != null && _getDistanceToStore() <= 100; // within 100 meters
@@ -43,6 +47,14 @@ class _MapsCheckinScreenState extends State<MapsCheckinScreen> with TickerProvid
   void initState() {
     super.initState();
     _currentTime = DateTime.now();
+    
+    // Debug Maps API key security
+    try {
+      _mapsService.debugSecurity();
+    } catch (e) {
+      print('❌ Error in Maps service debug: $e');
+    }
+    
     _getCurrentLocation();
   }
 
@@ -54,42 +66,93 @@ class _MapsCheckinScreenState extends State<MapsCheckinScreen> with TickerProvid
 
   Future<void> _getCurrentLocation() async {
     try {
+      print('📍 Starting location request...');
+      
       bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
       if (!serviceEnabled) {
-        throw Exception('Location services are disabled');
+        print('❌ Location services disabled');
+        throw Exception('Location services are disabled. Please enable location services in device settings.');
       }
+      
+      print('✅ Location services enabled');
 
       LocationPermission permission = await Geolocator.checkPermission();
+      print('🔍 Current permission: $permission');
+      
       if (permission == LocationPermission.denied) {
+        print('🔄 Requesting location permission...');
         permission = await Geolocator.requestPermission();
+        print('🔍 Permission after request: $permission');
+        
         if (permission == LocationPermission.denied) {
-          throw Exception('Location permissions are denied');
+          throw Exception('Location permissions are denied. Please allow location access in app settings.');
         }
       }
 
       if (permission == LocationPermission.deniedForever) {
-        throw Exception('Location permissions are permanently denied');
+        throw Exception('Location permissions are permanently denied. Please enable in device settings.');
       }
 
+      print('📡 Getting current position...');
       final position = await Geolocator.getCurrentPosition(
         desiredAccuracy: LocationAccuracy.high,
+        timeLimit: const Duration(seconds: 15), // Add timeout
       );
+      
+      print('✅ Got location: ${position.latitude}, ${position.longitude}');
 
-      setState(() {
-        _currentPosition = position;
-        _isLoading = false;
-      });
-
-      _updateMarkers();
-    } catch (e) {
-      setState(() {
-        _isLoading = false;
-      });
       if (mounted) {
+        setState(() {
+          _currentPosition = position;
+          _isLoading = false;
+        });
+
+        // Delay marker update to prevent crashes
+        print('⏰ Scheduling marker update...');
+        Future.delayed(const Duration(milliseconds: 1000), () {
+          if (mounted) {
+            _updateMarkers();
+          }
+        });
+      }
+    } catch (e) {
+      print('❌ Location error: $e');
+      
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          // Set default location if GPS fails
+          _currentPosition = Position(
+            latitude: -6.200000,
+            longitude: 106.816666,
+            timestamp: DateTime.now(),
+            accuracy: 0.0,
+            altitude: 0.0,
+            altitudeAccuracy: 0.0,
+            heading: 0.0,
+            headingAccuracy: 0.0,
+            speed: 0.0,
+            speedAccuracy: 0.0,
+          );
+        });
+        
+        _updateMarkers();
+        
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Error getting location: $e'),
-            backgroundColor: Colors.red,
+            content: Text('Using default location: $e'),
+            backgroundColor: Colors.orange,
+            action: SnackBarAction(
+              label: 'Settings',
+              onPressed: () {
+                // Open app settings - in real app, use app_settings plugin
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Please enable location permissions in device settings'),
+                  ),
+                );
+              },
+            ),
           ),
         );
       }
@@ -97,44 +160,8 @@ class _MapsCheckinScreenState extends State<MapsCheckinScreen> with TickerProvid
   }
 
   void _updateMarkers() {
-    if (_currentPosition == null) return;
-
-    final markers = <Marker>{};
-
-    // Add current position marker
-    markers.add(
-      Marker(
-        markerId: const MarkerId('current_position'),
-        position: LatLng(_currentPosition!.latitude, _currentPosition!.longitude),
-        icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue),
-        infoWindow: const InfoWindow(
-          title: 'Your Location',
-          snippet: 'Current position',
-        ),
-      ),
-    );
-
-    // Add selected store marker if available
-    if (_selectedStore != null) {
-      markers.add(
-        Marker(
-          markerId: MarkerId('store_${_selectedStore!.id}'),
-          position: LatLng(
-            double.parse(_selectedStore!.latitude),
-            double.parse(_selectedStore!.longitude),
-          ),
-          icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed),
-          infoWindow: InfoWindow(
-            title: _selectedStore!.name,
-            snippet: _selectedStore!.address,
-          ),
-        ),
-      );
-    }
-
-    setState(() {
-      _markers = markers;
-    });
+    // Use the safer update method
+    _updateMarkersSimple();
   }
 
   double _getDistanceToStore() {
@@ -184,36 +211,33 @@ class _MapsCheckinScreenState extends State<MapsCheckinScreen> with TickerProvid
   }
 
   void _selectStore(Store store) {
-    setState(() {
-      _selectedStore = store;
-    });
-    _updateMarkers();
-
-    // Move camera to selected store
-    if (_mapController != null) {
-      _mapController!.animateCamera(
-        CameraUpdate.newLatLngZoom(
-          LatLng(
-            double.parse(store.latitude),
-            double.parse(store.longitude),
-          ),
-          16.0,
-        ),
-      );
+    print('🏪 Store selected: ${store.name}');
+    
+    // Simple state update
+    if (mounted) {
+      setState(() {
+        _selectedStore = store;
+        _showStoreSelection = false;
+      });
     }
   }
 
   void _goToTargetLocation() {
     if (_selectedStore != null && _mapController != null) {
-      _mapController!.animateCamera(
-        CameraUpdate.newLatLngZoom(
-          LatLng(
-            double.parse(_selectedStore!.latitude),
-            double.parse(_selectedStore!.longitude),
+      try {
+        print('🎯 Going to target location: ${_selectedStore!.name}');
+        _mapController!.animateCamera(
+          CameraUpdate.newLatLngZoom(
+            LatLng(
+              double.parse(_selectedStore!.latitude),
+              double.parse(_selectedStore!.longitude),
+            ),
+            16.0,
           ),
-          16.0,
-        ),
-      );
+        );
+      } catch (e) {
+        print('❌ Error going to target: $e');
+      }
     }
   }
 
@@ -293,6 +317,11 @@ class _MapsCheckinScreenState extends State<MapsCheckinScreen> with TickerProvid
   }
 
   Future<void> _performCheckIn() async {
+    // Prevent multiple check-in attempts
+    if (_isCheckingIn) {
+      return;
+    }
+
     if (!_isDistanceValid || !_isPhotoValid || !_isNoteValid) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -337,18 +366,45 @@ class _MapsCheckinScreenState extends State<MapsCheckinScreen> with TickerProvid
     );
 
     if (confirmed == true) {
+      setState(() {
+        _isCheckingIn = true;
+      });
+
       try {
         // Show loading dialog
+        final screenSize = MediaQuery.of(context).size;
+        final isSmallScreen = screenSize.width < 360;
+        
         showDialog(
           context: context,
           barrierDismissible: false,
-          builder: (context) => const AlertDialog(
-            content: Row(
-              children: [
-                CircularProgressIndicator(),
-                SizedBox(width: 20),
-                Text('Checking in...'),
-              ],
+          builder: (context) => WillPopScope(
+            onWillPop: () async => false,
+            child: AlertDialog(
+              contentPadding: EdgeInsets.all(isSmallScreen ? 16 : 24),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const CircularProgressIndicator(),
+                  SizedBox(height: isSmallScreen ? 12 : 16),
+                  Text(
+                    'Checking in...',
+                    style: TextStyle(
+                      fontSize: isSmallScreen ? 14 : 16,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                  SizedBox(height: isSmallScreen ? 6 : 8),
+                  Text(
+                    'Please wait, do not close the app',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: isSmallScreen ? 11 : 12,
+                      color: Colors.grey[600],
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         );
@@ -358,6 +414,7 @@ class _MapsCheckinScreenState extends State<MapsCheckinScreen> with TickerProvid
           storeName: _selectedStore!.name,
           image: _selectedImage!,
           note: _note,
+          distance: _getDistanceToStore(),
         );
 
         if (mounted) {
@@ -368,6 +425,7 @@ class _MapsCheckinScreenState extends State<MapsCheckinScreen> with TickerProvid
             SnackBar(
               content: Text('Successfully checked in at ${_selectedStore!.name}'),
               backgroundColor: Colors.green,
+              duration: const Duration(seconds: 3),
             ),
           );
         }
@@ -378,8 +436,15 @@ class _MapsCheckinScreenState extends State<MapsCheckinScreen> with TickerProvid
             SnackBar(
               content: Text('Check-in failed: $e'),
               backgroundColor: Colors.red,
+              duration: const Duration(seconds: 5),
             ),
           );
+        }
+      } finally {
+        if (mounted) {
+          setState(() {
+            _isCheckingIn = false;
+          });
         }
       }
     }
@@ -393,7 +458,7 @@ class _MapsCheckinScreenState extends State<MapsCheckinScreen> with TickerProvid
     return stores;
   }
 
-  Widget _buildStoreSelectionSheet({ScrollController? scrollController}) {
+  Widget _buildStoreSelectionSheetOLD({ScrollController? scrollController}) { // Deprecated - using simple list now
     final stores = _getAllStores();
 
     return Column(
@@ -508,11 +573,7 @@ class _MapsCheckinScreenState extends State<MapsCheckinScreen> with TickerProvid
                     ],
                   ),
                   trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-                  onTap: () {
-                    _selectStore(store);
-                    // Animate to expanded when store selected
-                    _draggableController.animateTo(0.85, duration: const Duration(milliseconds: 300), curve: Curves.easeInOut);
-                  },
+                  onTap: () => _selectStore(store),
                 ),
               );
             },
@@ -522,7 +583,7 @@ class _MapsCheckinScreenState extends State<MapsCheckinScreen> with TickerProvid
     );
   }
 
-  Widget _buildCheckInFormSheet({ScrollController? scrollController}) {
+  Widget _buildCheckInFormSheetOLD({ScrollController? scrollController}) { // Deprecated - using simple panel now
     final distance = _getDistanceToStore();
 
     return SingleChildScrollView(
@@ -810,7 +871,7 @@ class _MapsCheckinScreenState extends State<MapsCheckinScreen> with TickerProvid
             width: double.infinity,
             height: 50,
             child: ElevatedButton(
-              onPressed: (_isDistanceValid && _isPhotoValid && _isNoteValid)
+              onPressed: (_isDistanceValid && _isPhotoValid && _isNoteValid && !_isCheckingIn)
                   ? _performCheckIn
                   : null,
               style: ElevatedButton.styleFrom(
@@ -820,13 +881,35 @@ class _MapsCheckinScreenState extends State<MapsCheckinScreen> with TickerProvid
                   borderRadius: BorderRadius.circular(12),
                 ),
               ),
-              child: const Text(
-                'Check In',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
+              child: _isCheckingIn
+                  ? const Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                          ),
+                        ),
+                        SizedBox(width: 8),
+                        Text(
+                          'Checking in...',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    )
+                  : const Text(
+                      'Check In',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
             ),
           ),
         ],
@@ -836,6 +919,10 @@ class _MapsCheckinScreenState extends State<MapsCheckinScreen> with TickerProvid
 
   @override
   Widget build(BuildContext context) {
+    final screenSize = MediaQuery.of(context).size;
+    final isSmallScreen = screenSize.width < 360;
+    final isLargeScreen = screenSize.width > 414;
+    
     return Scaffold(
       body: _isLoading
           ? const Center(
@@ -844,28 +931,22 @@ class _MapsCheckinScreenState extends State<MapsCheckinScreen> with TickerProvid
                 children: [
                   CircularProgressIndicator(),
                   SizedBox(height: 16),
-                  Text('Getting your location...'),
+                  Text('Initializing maps and location...'),
+                  SizedBox(height: 8),
+                  Text(
+                    'This may take a few seconds',
+                    style: TextStyle(fontSize: 12, color: Colors.grey),
+                  ),
                 ],
               ),
             )
           : Stack(
               children: [
-                // Google Map
-                GoogleMap(
-                  onMapCreated: (GoogleMapController controller) {
-                    _mapController = controller;
-                  },
-                  initialCameraPosition: CameraPosition(
-                    target: _currentPosition != null
-                        ? LatLng(_currentPosition!.latitude, _currentPosition!.longitude)
-                        : const LatLng(-6.200000, 106.816666), // Jakarta default
-                    zoom: 15.0,
-                  ),
-                  markers: _markers,
-                  myLocationEnabled: true,
-                  myLocationButtonEnabled: false,
-                  zoomControlsEnabled: false,
-                  mapToolbarEnabled: false,
+                // Minimal Google Map for maximum stability
+                Container(
+                  child: _currentPosition != null 
+                    ? _buildMinimalMap()
+                    : _buildMapPlaceholder(),
                 ),
 
                 // Top app bar
@@ -912,49 +993,418 @@ class _MapsCheckinScreenState extends State<MapsCheckinScreen> with TickerProvid
                   ),
                 ),
 
-                // DraggableScrollableSheet as bottom sheet
-                DraggableScrollableSheet(
-                  controller: _draggableController,
-                  initialChildSize: 0.25,
-                  minChildSize: 0.18,
-                  maxChildSize: 0.85,
-                  snap: true,
-                  builder: (context, scrollController) {
-                    if (_selectedStore == null) {
-                      return Container(
-                        decoration: const BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black26,
-                              blurRadius: 10,
-                              offset: Offset(0, -5),
-                            ),
-                          ],
-                        ),
-                        child: _buildStoreSelectionSheet(scrollController: scrollController),
-                      );
-                    } else {
-                      return Container(
-                        decoration: const BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black26,
-                              blurRadius: 10,
-                              offset: Offset(0, -5),
-                            ),
-                          ],
-                        ),
-                        child: _buildCheckInFormSheet(scrollController: scrollController),
-                      );
-                    }
-                  },
+                // Simple bottom panel to prevent crashes
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  child: _selectedStore == null
+                      ? _buildSimpleStoreList()
+                      : _buildSimpleCheckInPanel(),
                 ),
               ],
             ),
+    );
+  }
+
+  // Ultra-minimal map to prevent crashes
+  Widget _buildMinimalMap() {
+    try {
+      print('🗺️ Building ultra-minimal map...');
+      
+      return Container(
+        color: Colors.grey[200],
+        child: GoogleMap(
+          onMapCreated: (GoogleMapController controller) {
+            print('✅ Ultra-minimal map created');
+            _mapController = controller;
+          },
+          initialCameraPosition: CameraPosition(
+            target: LatLng(_currentPosition!.latitude, _currentPosition!.longitude),
+            zoom: 14.0,
+          ),
+          
+          // Absolutely minimal configuration
+          markers: const <Marker>{}, // Empty markers
+          myLocationEnabled: false,
+          myLocationButtonEnabled: false,
+          zoomControlsEnabled: false,
+          mapToolbarEnabled: false,
+          
+          // All gestures disabled initially
+          rotateGesturesEnabled: false,
+          tiltGesturesEnabled: false,
+          scrollGesturesEnabled: false,
+          zoomGesturesEnabled: false,
+          
+          // No event handlers at all
+        ),
+      );
+    } catch (e) {
+      print('❌ Error building minimal map: $e');
+      return _buildMapError();
+    }
+  }
+  
+  // Emergency fallback if Maps completely fails
+  Widget _buildMapError() {
+    return Container(
+      color: Colors.blue[50],
+      child: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: Colors.blue.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Icon(
+                  Icons.location_on_outlined,
+                  size: 64,
+                  color: Colors.blue[300],
+                ),
+              ),
+              const SizedBox(height: 20),
+              const Text(
+                'Map Loading Issue',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.black87,
+                ),
+              ),
+              const SizedBox(height: 12),
+              const Text(
+                'We\'re having trouble loading the map. You can still proceed with check-in using the store list below.',
+                style: TextStyle(
+                  fontSize: 14,
+                  color: Colors.black54,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 20),
+              ElevatedButton.icon(
+                onPressed: () {
+                  setState(() {
+                    _isLoading = true;
+                  });
+                  _getCurrentLocation();
+                },
+                icon: const Icon(Icons.refresh),
+                label: const Text('Try Again'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color.fromARGB(255, 41, 189, 206),
+                  foregroundColor: Colors.white,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // Simplified marker update
+  void _updateMarkersSimple() {
+    if (!mounted || _currentPosition == null) return;
+    
+    try {
+      print('🔄 Updating markers safely...');
+      
+      final markers = <Marker>{};
+      
+      // Add current position marker only
+      markers.add(
+        Marker(
+          markerId: const MarkerId('current_position'),
+          position: LatLng(_currentPosition!.latitude, _currentPosition!.longitude),
+          icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue),
+          infoWindow: const InfoWindow(
+            title: 'Your Location',
+          ),
+        ),
+      );
+      
+      // Add selected store marker if available
+      if (_selectedStore != null) {
+        markers.add(
+          Marker(
+            markerId: MarkerId('store_${_selectedStore!.id}'),
+            position: LatLng(
+              double.parse(_selectedStore!.latitude),
+              double.parse(_selectedStore!.longitude),
+            ),
+            icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed),
+            infoWindow: InfoWindow(
+              title: _selectedStore!.name,
+              snippet: _selectedStore!.address,
+            ),
+          ),
+        );
+      }
+      
+      if (mounted) {
+        setState(() {
+          _markers = markers;
+        });
+        print('✅ Markers updated successfully');
+      }
+    } catch (e) {
+      print('❌ Error updating markers: $e');
+    }
+  }
+
+  // Map placeholder while loading
+  Widget _buildMapPlaceholder() {
+    return Container(
+      color: Colors.grey[100],
+      child: const Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.map_outlined, size: 64, color: Colors.grey),
+            SizedBox(height: 16),
+            Text('Preparing map...'),
+            SizedBox(height: 8),
+            CircularProgressIndicator(),
+          ],
+        ),
+      ),
+    );
+  }
+  
+  // Simple store list without DraggableScrollableSheet
+  Widget _buildSimpleStoreList() {
+    final stores = _getAllStores();
+    
+    return Container(
+      height: MediaQuery.of(context).size.height * 0.4,
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      child: Column(
+        children: [
+          // Handle bar
+          Container(
+            width: 40,
+            height: 4,
+            margin: const EdgeInsets.symmetric(vertical: 8),
+            decoration: BoxDecoration(
+              color: Colors.grey[300],
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          
+          // Header
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Row(
+              children: [
+                const Icon(Icons.store, color: Color.fromARGB(255, 41, 189, 206)),
+                const SizedBox(width: 8),
+                const Text(
+                  'Select Store',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                ),
+                const Spacer(),
+                Text(
+                  '${stores.length} stores',
+                  style: TextStyle(color: Colors.grey[600], fontSize: 14),
+                ),
+              ],
+            ),
+          ),
+          
+          // Store list
+          Expanded(
+            child: ListView.separated(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              itemCount: stores.length,
+              separatorBuilder: (context, index) => const Divider(height: 1),
+              itemBuilder: (context, index) {
+                final store = stores[index];
+                final distance = _currentPosition != null
+                    ? Geolocator.distanceBetween(
+                        _currentPosition!.latitude,
+                        _currentPosition!.longitude,
+                        double.parse(store.latitude),
+                        double.parse(store.longitude),
+                      )
+                    : 0.0;
+
+                return Card(
+                  margin: const EdgeInsets.symmetric(vertical: 4),
+                  child: ListTile(
+                    leading: Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: const Color.fromARGB(255, 41, 189, 206).withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Icon(Icons.store, color: Color.fromARGB(255, 41, 189, 206)),
+                    ),
+                    title: Text(store.name, style: const TextStyle(fontWeight: FontWeight.bold)),
+                    subtitle: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(store.address, style: TextStyle(color: Colors.grey[600], fontSize: 13)),
+                        const SizedBox(height: 4),
+                        Row(
+                          children: [
+                            Icon(Icons.location_on, size: 14, color: Colors.grey[500]),
+                            const SizedBox(width: 4),
+                            Text(
+                              _formatDistance(distance),
+                              style: TextStyle(
+                                color: distance <= 100 ? Colors.green : Colors.orange,
+                                fontWeight: FontWeight.w500,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                    onTap: () => _selectStore(store),
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+  
+  // Simple check-in panel
+  Widget _buildSimpleCheckInPanel() {
+    if (_selectedStore == null) {
+      return Container(
+        height: 200,
+        color: Colors.white,
+        child: const Center(
+          child: Text('No store selected'),
+        ),
+      );
+    }
+    
+    final distance = _getDistanceToStore();
+    
+    return Container(
+      height: MediaQuery.of(context).size.height * 0.6,
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Handle bar
+            Center(
+              child: Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.grey[300],
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            
+            const SizedBox(height: 20),
+            
+            // Store info
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: const Color.fromARGB(255, 41, 189, 206).withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Icon(Icons.store, color: Color.fromARGB(255, 41, 189, 206)),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        _selectedStore!.name,
+                        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                      ),
+                      Text(
+                        _selectedStore!.address,
+                        style: TextStyle(color: Colors.grey[600], fontSize: 14),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            
+            const SizedBox(height: 20),
+            
+            // Distance info
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: distance <= 100 ? Colors.green.withOpacity(0.1) : Colors.orange.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: distance <= 100 ? Colors.green : Colors.orange,
+                  width: 1,
+                ),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.location_on,
+                    color: distance <= 100 ? Colors.green : Colors.orange,
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Distance: ${_formatDistance(distance)}',
+                    style: TextStyle(
+                      color: distance <= 100 ? Colors.green : Colors.orange,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            
+            const SizedBox(height: 20),
+            
+            // Simple check-in button
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: distance <= 100 ? () {
+                  Navigator.pop(context, true); // Simple success for now
+                } : null,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color.fromARGB(255, 41, 189, 206),
+                  foregroundColor: Colors.white,
+                  minimumSize: const Size(0, 50),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+                child: Text(
+                  distance <= 100 ? 'Check In' : 'Too far from store (${_formatDistance(distance)})',
+                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

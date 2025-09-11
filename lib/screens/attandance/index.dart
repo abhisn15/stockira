@@ -1,10 +1,10 @@
-import 'dart:math';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:stockira/services/attendance_service.dart';
+import 'package:stockira/services/itinerary_service.dart';
 import 'package:stockira/models/attendance_record.dart';
-import '../attendance/calendar_screen.dart';
+import 'package:stockira/widgets/attendance_list_widget.dart';
 
 class AttendanceScreen extends StatefulWidget {
   const AttendanceScreen({super.key});
@@ -18,12 +18,16 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
   late DateTime firstDayOfMonth;
   late DateTime lastDayOfMonth;
 
-  // Attendance service
+  // Services
   final AttendanceService _attendanceService = AttendanceService();
-  
+
   // Data absensi per hari, key: yyyy-MM-dd, value: Map (checkin, checkout, dll)
   Map<String, Map<String, dynamic>> attendanceData = {};
   List<AttendanceRecord> attendanceRecords = [];
+
+  // Store meta from itinerary (code, address) keyed by store_id
+  Map<int, String> storeCodeMap = {};
+  Map<int, String> storeAddressMap = {};
 
   // KPI
   int totalMasuk = 0;
@@ -34,7 +38,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
   int uniqueStore = 0;
   int noOut = 0;
   int lessThan5Min = 0;
-  
+
   // Statistics
   Map<String, dynamic> statistics = {};
   bool isLoading = false;
@@ -53,10 +57,10 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
     if (raw != null) {
       setState(() {
         attendanceData = Map<String, Map<String, dynamic>>.from(
-          (json.decode(raw) as Map).map((k, v) => MapEntry(
-            k as String,
-            Map<String, dynamic>.from(v as Map),
-          )),
+          (json.decode(raw) as Map).map(
+            (k, v) =>
+                MapEntry(k as String, Map<String, dynamic>.from(v as Map)),
+          ),
         );
       });
     }
@@ -67,7 +71,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
     setState(() {
       isLoading = true;
     });
-    
+
     try {
       final records = await _attendanceService.getRecordsByDateRange(
         firstDayOfMonth,
@@ -77,7 +81,10 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
         startDate: firstDayOfMonth,
         endDate: lastDayOfMonth,
       );
-      
+
+      // Load itinerary data for the entire month to build store code/address maps
+      await _loadItineraryDataForMonth(records);
+
       setState(() {
         attendanceRecords = records;
         statistics = stats;
@@ -93,9 +100,52 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
     }
   }
 
-  Future<void> _saveAttendanceData() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('attendanceData', json.encode(attendanceData));
+  // Load itinerary data for the entire month to build store code/address maps
+  Future<void> _loadItineraryDataForMonth(List<AttendanceRecord> records) async {
+    final Map<int, String> codeMap = {};
+    final Map<int, String> addrMap = {};
+
+    try {
+      // Get all unique dates in the month that have attendance records
+      final Set<DateTime> uniqueDates = {};
+      for (final record in records) {
+        uniqueDates.add(DateTime(record.date.year, record.date.month, record.date.day));
+      }
+
+      // If no attendance records, load today's itinerary as fallback
+      if (uniqueDates.isEmpty) {
+        uniqueDates.add(DateTime.now());
+      }
+
+      // Fetch itinerary for each unique date
+      for (final date in uniqueDates) {
+        final dateStr = '${date.year.toString().padLeft(4, '0')}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+        final itineraryResp = await ItineraryService.getItineraryByDate(dateStr);
+
+        if (itineraryResp.success) {
+          for (final itin in itineraryResp.data) {
+            for (final store in itin.stores) {
+              // Only add if not already present (prioritize first occurrence)
+              if (!codeMap.containsKey(store.id)) {
+                codeMap[store.id] = store.code ?? '';
+                addrMap[store.id] = store.address ?? '';
+              }
+            }
+          }
+        }
+      }
+
+      setState(() {
+        storeCodeMap = codeMap;
+        storeAddressMap = addrMap;
+      });
+
+      print('✅ Loaded itinerary data for ${uniqueDates.length} dates');
+      print('✅ Built store maps with ${codeMap.length} store entries');
+    } catch (e) {
+      print('❌ Error loading itinerary data for month: $e');
+      // Don't show error to user as this is not critical for attendance display
+    }
   }
 
   void _setPeriod(DateTime date) {
@@ -117,7 +167,8 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
     Set<String> storeSet = {};
 
     for (int i = 1; i <= lastDayOfMonth.day; i++) {
-      String key = "${selectedDate.year.toString().padLeft(4, '0')}-${selectedDate.month.toString().padLeft(2, '0')}-${i.toString().padLeft(2, '0')}";
+      String key =
+          "${selectedDate.year.toString().padLeft(4, '0')}-${selectedDate.month.toString().padLeft(2, '0')}-${i.toString().padLeft(2, '0')}";
       final data = attendanceData[key];
       if (data != null && data['checkin'] != null) {
         masuk++;
@@ -144,176 +195,121 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
   void _onCalendarDayTap(DateTime day) async {
     setState(() {
       selectedDate = day;
-      _setPeriod(day);
+      isLoading = true;
     });
-    // Tampilkan dialog checkin/checkout
-    String key = "${day.year.toString().padLeft(4, '0')}-${day.month.toString().padLeft(2, '0')}-${day.day.toString().padLeft(2, '0')}";
-    Map<String, dynamic> data = attendanceData[key] ?? {};
 
-    await showDialog(
-      context: context,
-      builder: (ctx) {
-        bool isCheckedIn = data['checkin'] != null;
-        bool isCheckedOut = data['checkout'] != null;
-        return AlertDialog(
-          title: Text("Absensi ${day.day}/${day.month}/${day.year}"),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (isCheckedIn)
-                ListTile(
-                  leading: const Icon(Icons.login, color: Colors.green),
-                  title: const Text("Sudah Check In"),
-                  subtitle: Text(data['checkin'] ?? ''),
-                )
-              else
-                ElevatedButton.icon(
-                  icon: const Icon(Icons.login),
-                  label: const Text("Check In"),
-                  onPressed: () async {
-                    String now = TimeOfDay.now().format(context);
-                    attendanceData[key] = {
-                      ...data,
-                      'checkin': now,
-                      'store': 'Store${Random().nextInt(5) + 1}', // Simulasi store
-                      'noOut': false,
-                      'duration': Random().nextInt(10) + 1, // Simulasi durasi
-                    };
-                    await _saveAttendanceData();
-                    Navigator.of(ctx).pop();
-                    _refreshKpi();
-                  },
-                ),
-              const SizedBox(height: 8),
-              if (isCheckedIn && !isCheckedOut)
-                ElevatedButton.icon(
-                  icon: const Icon(Icons.logout),
-                  label: const Text("Check Out"),
-                  style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-                  onPressed: () async {
-                    String now = TimeOfDay.now().format(context);
-                    attendanceData[key] = {
-                      ...data,
-                      'checkout': now,
-                    };
-                    await _saveAttendanceData();
-                    Navigator.of(ctx).pop();
-                    _refreshKpi();
-                  },
-                ),
-              if (isCheckedOut)
-                ListTile(
-                  leading: const Icon(Icons.logout, color: Colors.red),
-                  title: const Text("Sudah Check Out"),
-                  subtitle: Text(data['checkout'] ?? ''),
-                ),
-            ],
-          ),
-        );
-      },
-    );
-    _refreshKpi();
+    try {
+      // Fetch attendance data for the selected day
+      final records = await _attendanceService.getAttendanceRecordsForDate(day);
+
+      // Fetch itinerary for store code/address mapping
+      final dateStr = '${day.year.toString().padLeft(4, '0')}-${day.month.toString().padLeft(2, '0')}-${day.day.toString().padLeft(2, '0')}';
+      final itineraryResp = await ItineraryService.getItineraryByDate(dateStr);
+
+      final Map<int, String> codeMap = {};
+      final Map<int, String> addrMap = {};
+      if (itineraryResp.success) {
+        for (final itin in itineraryResp.data) {
+          for (final store in itin.stores) {
+            codeMap[store.id] = store.code ?? '';
+            addrMap[store.id] = store.address ?? '';
+          }
+        }
+      }
+
+      setState(() {
+        attendanceRecords = records;
+        storeCodeMap = codeMap;
+        storeAddressMap = addrMap;
+        isLoading = false;
+      });
+    } catch (e) {
+      setState(() {
+        isLoading = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error loading attendance details: $e')),
+      );
+    }
   }
 
-  Widget _buildCircleProgress({
-    required double percent,
-    required Color color,
-    required String label,
-    required String value,
-  }) {
+
+  String _formatDate(DateTime date) {
+    return '${date.day}/${date.month}/${date.year}';
+  }
+
+  Widget _buildCalendarDayLabel(String label, double daySize, double fontSize) {
     return SizedBox(
-      width: 90,
-      height: 90,
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          CircularProgressIndicator(
-            value: percent.isNaN ? 0 : percent,
-            strokeWidth: 8,
-            backgroundColor: Colors.grey.shade200,
-            valueColor: AlwaysStoppedAnimation<Color>(color),
+      width: daySize,
+      height: 24,
+      child: Center(
+        child: Text(
+          label,
+          style: TextStyle(
+            fontWeight: FontWeight.bold,
+            color: Colors.black54,
+            fontSize: fontSize,
           ),
-          Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Text(
-                value,
-                style: const TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              Text(
-                label,
-                style: const TextStyle(
-                  fontSize: 13,
-                  color: Colors.black54,
-                ),
-              ),
-            ],
-          ),
-        ],
+        ),
       ),
     );
   }
 
-  Widget _buildKpiCard({required String label, required String value, Color? color}) {
-    return Container(
-      padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
-      decoration: BoxDecoration(
-        color: color ?? Colors.white,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: Colors.grey.shade200),
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(
-            value,
-            style: const TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          const SizedBox(height: 2),
-          Text(
-            label,
-            style: const TextStyle(
-              fontSize: 13,
-              color: Colors.black54,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
+
+
 
   Widget _buildCalendar() {
-    // Calendar for current month
-    List<Widget> rows = [];
-    DateTime firstDay = firstDayOfMonth;
-    int weekdayOffset = firstDay.weekday % 7; // 0 for Sunday
-    int daysInMonth = lastDayOfMonth.day;
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final screenWidth = constraints.maxWidth;
+        final isLargeScreen = screenWidth > 400;
+        final daySize = isLargeScreen ? 44.0 : 40.0;
+        final fontSize = isLargeScreen ? 14.0 : 12.0;
+        final smallFontSize = isLargeScreen ? 10.0 : 8.0;
 
-    List<Widget> dayWidgets = [];
-    // Add empty widgets for offset
-    for (int i = 0; i < weekdayOffset; i++) {
-      dayWidgets.add(const SizedBox());
-    }
+        // Calendar for current month
+        List<Widget> rows = [];
+        DateTime firstDay = firstDayOfMonth;
+        int weekdayOffset = firstDay.weekday % 7; // 0 for Sunday
+        int daysInMonth = lastDayOfMonth.day;
+        List<Widget> dayWidgets = [];
+
+        // Add empty widgets for offset
+        for (int i = 0; i < weekdayOffset; i++) {
+          dayWidgets.add(SizedBox(width: daySize, height: daySize));
+        }
 
     for (int day = 1; day <= daysInMonth; day++) {
       DateTime thisDay = DateTime(firstDay.year, firstDay.month, day);
-      bool isToday = thisDay.day == DateTime.now().day &&
+      bool isToday =
+          thisDay.day == DateTime.now().day &&
           thisDay.month == DateTime.now().month &&
           thisDay.year == DateTime.now().year;
-      bool isSelected = thisDay.day == selectedDate.day &&
+      bool isSelected =
+          thisDay.day == selectedDate.day &&
           thisDay.month == selectedDate.month &&
           thisDay.year == selectedDate.year;
 
-      String key = "${thisDay.year.toString().padLeft(4, '0')}-${thisDay.month.toString().padLeft(2, '0')}-${thisDay.day.toString().padLeft(2, '0')}";
-      final data = attendanceData[key];
-      bool isCheckedIn = data != null && data['checkin'] != null;
-      bool isCheckedOut = data != null && data['checkout'] != null;
+      // Find attendance record for this day from API data
+      Color dayColor = Colors.grey.shade200; // Default: no activity (grey)
+      bool isPresent = false;
+
+      final record = attendanceRecords.firstWhere(
+        (r) =>
+            r.date.year == thisDay.year &&
+            r.date.month == thisDay.month &&
+            r.date.day == thisDay.day,
+        orElse: () => AttendanceRecord(id: 0, date: thisDay),
+      );
+
+      if (record.id != 0) {
+        // Green: Has total masuk (attendance records)
+        dayColor = Colors.green.shade100;
+        isPresent = true;
+      } else {
+        // Grey: No attendance recorded for this date
+        dayColor = Colors.grey.shade200;
+      }
 
       dayWidgets.add(
         GestureDetector(
@@ -324,42 +320,61 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
               color: isToday
                   ? Colors.cyan
                   : isSelected
-                      ? Colors.red.shade100
-                      : isCheckedIn
-                          ? Colors.green.shade100
-                          : Colors.transparent,
+                  ? Colors.red.shade100
+                  : dayColor,
               shape: BoxShape.circle,
-              border: isCheckedIn
+              border: isPresent
                   ? Border.all(color: Colors.green, width: 2)
-                  : null,
+                  : Border.all(color: Colors.grey[400]!, width: 1),
             ),
-            width: 36,
-            height: 36,
+            width: daySize,
+            height: daySize,
             alignment: Alignment.center,
             child: Stack(
               alignment: Alignment.center,
               children: [
-                Text(
-                  '$day',
-                  style: TextStyle(
-                    color: isToday
-                        ? Colors.white
-                        : isSelected
+                Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      '$day',
+                      style: TextStyle(
+                        color: isToday
+                            ? Colors.white
+                            : isSelected
                             ? Colors.red
-                            : isCheckedIn
-                                ? Colors.green[900]
-                                : Colors.black87,
-                    fontWeight: isToday || isSelected || isCheckedIn
-                        ? FontWeight.bold
-                        : FontWeight.normal,
-                  ),
+                            : isPresent
+                            ? Colors.green[900]
+                            : Colors.black87,
+                        fontWeight: isToday || isSelected
+                            ? FontWeight.bold
+                            : FontWeight.normal,
+                        fontSize: fontSize,
+                      ),
+                    ),
+                    // Show store count for present days with better responsive design
+                    if (isPresent && record.details.isNotEmpty)
+                      Container(
+                        margin: const EdgeInsets.only(top: 1),
+                        padding: EdgeInsets.symmetric(
+                          horizontal: isLargeScreen ? 3 : 2,
+                          vertical: isLargeScreen ? 2 : 1,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.green.withOpacity(0.2),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Text(
+                          '${record.details.length}',
+                          style: TextStyle(
+                            color: Colors.green[900],
+                            fontSize: smallFontSize,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                  ],
                 ),
-                if (isCheckedOut)
-                  Positioned(
-                    right: 2,
-                    bottom: 2,
-                    child: Icon(Icons.check_circle, color: Colors.blue, size: 14),
-                  ),
               ],
             ),
           ),
@@ -369,15 +384,17 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
 
     // Fill the last row with empty widgets if needed
     while (dayWidgets.length % 7 != 0) {
-      dayWidgets.add(const SizedBox());
+      dayWidgets.add(SizedBox(width: daySize, height: daySize));
     }
 
     // Build rows
     for (int i = 0; i < dayWidgets.length; i += 7) {
-      rows.add(Row(
-        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-        children: dayWidgets.sublist(i, i + 7),
-      ));
+      rows.add(
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+          children: dayWidgets.sublist(i, i + 7),
+        ),
+      );
     }
 
     return Column(
@@ -391,20 +408,31 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
                 icon: const Icon(Icons.chevron_left),
                 onPressed: () {
                   setState(() {
-                    selectedDate = DateTime(selectedDate.year, selectedDate.month - 1, 1);
+                    selectedDate = DateTime(
+                      selectedDate.year,
+                      selectedDate.month - 1,
+                      1,
+                    );
                     _setPeriod(selectedDate);
                   });
                 },
               ),
               Text(
                 "${_monthName(selectedDate.month)} ${selectedDate.year}",
-                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                style: TextStyle(
+                  fontSize: isLargeScreen ? 18 : 16,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
               IconButton(
                 icon: const Icon(Icons.chevron_right),
                 onPressed: () {
                   setState(() {
-                    selectedDate = DateTime(selectedDate.year, selectedDate.month + 1, 1);
+                    selectedDate = DateTime(
+                      selectedDate.year,
+                      selectedDate.month + 1,
+                      1,
+                    );
                     _setPeriod(selectedDate);
                   });
                 },
@@ -414,33 +442,72 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
         ),
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-          children: const [
-            _CalendarDayLabel('S'),
-            _CalendarDayLabel('M'),
-            _CalendarDayLabel('T'),
-            _CalendarDayLabel('W'),
-            _CalendarDayLabel('T'),
-            _CalendarDayLabel('F'),
-            _CalendarDayLabel('S'),
+          children: [
+            _buildCalendarDayLabel('S', daySize, smallFontSize),
+            _buildCalendarDayLabel('M', daySize, smallFontSize),
+            _buildCalendarDayLabel('T', daySize, smallFontSize),
+            _buildCalendarDayLabel('W', daySize, smallFontSize),
+            _buildCalendarDayLabel('T', daySize, smallFontSize),
+            _buildCalendarDayLabel('F', daySize, smallFontSize),
+            _buildCalendarDayLabel('S', daySize, smallFontSize),
           ],
         ),
         const SizedBox(height: 4),
         ...rows,
       ],
     );
+      },
+    );
   }
 
   String _monthName(int month) {
     const months = [
-      'January', 'February', 'March', 'April', 'May', 'June',
-      'July', 'August', 'September', 'October', 'November', 'December'
+      'January',
+      'February',
+      'March',
+      'April',
+      'May',
+      'June',
+      'July',
+      'August',
+      'September',
+      'October',
+      'November',
+      'December',
     ];
     return months[month - 1];
   }
 
   @override
   Widget build(BuildContext context) {
-    double achPercent = (plan == 0) ? double.nan : (actual / plan).clamp(0.0, 1.0);
+
+    Widget _buildLegendItem({
+      required Color color,
+      Color? borderColor,
+      required String label,
+    }) {
+      return Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 16,
+            height: 16,
+            decoration: BoxDecoration(
+              color: color,
+              shape: BoxShape.circle,
+              border: borderColor != null
+                  ? Border.all(color: borderColor, width: 1)
+                  : null,
+            ),
+          ),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            style: const TextStyle(fontSize: 13, color: Colors.black54),
+          ),
+        ],
+      );
+    }
 
     return Scaffold(
       appBar: AppBar(
@@ -449,15 +516,9 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
         foregroundColor: Colors.white,
         actions: [
           IconButton(
-            icon: const Icon(Icons.calendar_month),
-            onPressed: () {
-              Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (context) => const AttendanceCalendarScreen(),
-                ),
-              );
-            },
-            tooltip: 'View Calendar',
+            icon: const Icon(Icons.refresh),
+            onPressed: () => _loadAttendanceRecords(),
+            tooltip: 'Refresh Data',
           ),
         ],
       ),
@@ -466,111 +527,46 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // KPI summary
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                _buildCircleProgress(
-                  percent: totalHari == 0 ? 0 : totalMasuk / totalHari,
-                  color: Colors.red,
-                  label: 'Total Masuk',
-                  value: '$totalMasuk/$totalHari',
-                ),
-                _buildCircleProgress(
-                  percent: plan == 0 ? 0 : (actual / plan).clamp(0.0, 1.0),
-                  color: Colors.orange,
-                  label: 'Plan',
-                  value: '$plan',
-                ),
-                _buildCircleProgress(
-                  percent: plan == 0 ? 0 : (actual / plan).clamp(0.0, 1.0),
-                  color: Colors.green,
-                  label: 'Actual',
-                  value: '$actual',
-                ),
-                _buildCircleProgress(
-                  percent: achPercent.isNaN ? 0 : achPercent,
-                  color: Colors.blue,
-                  label: 'Ach',
-                  value: plan == 0 ? 'NaN%' : '${((actual / plan) * 100).toStringAsFixed(0)}%',
-                ),
-              ],
-            ),
-            const SizedBox(height: 18),
-            // KPI details
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Expanded(
-                  child: _buildKpiCard(label: 'Unique Store', value: '$uniqueStore'),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: _buildKpiCard(label: 'No Out', value: '$noOut'),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: _buildKpiCard(label: '<5 Menit', value: '$lessThan5Min'),
-                ),
-              ],
-            ),
-            const SizedBox(height: 24),
             // Calendar
             Card(
               elevation: 2,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14),
+              ),
               child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+                padding: const EdgeInsets.symmetric(
+                  vertical: 12,
+                  horizontal: 8,
+                ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    const Text(
-                      'KPI Kalender',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.red,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
                     _buildCalendar(),
                     const SizedBox(height: 8),
-                    Row(
+                    Wrap(
+                      spacing: 12,
+                      runSpacing: 8,
+                      alignment: WrapAlignment.center,
                       children: [
-                        Container(
-                          width: 16,
-                          height: 16,
-                          decoration: const BoxDecoration(
-                            color: Colors.cyan,
-                            shape: BoxShape.circle,
-                          ),
+                        _buildLegendItem(
+                          color: Colors.yellow.shade200,
+                          borderColor: Colors.yellow,
+                          label: 'Pending/Approved',
                         ),
-                        const SizedBox(width: 6),
-                        const Text(
-                          'Hari ini',
-                          style: TextStyle(fontSize: 13, color: Colors.black54),
+                        _buildLegendItem(
+                          color: Colors.green.shade100,
+                          borderColor: Colors.green,
+                          label: 'Present',
                         ),
-                        const SizedBox(width: 12),
-                        Container(
-                          width: 16,
-                          height: 16,
-                          decoration: BoxDecoration(
-                            color: Colors.green.shade100,
-                            shape: BoxShape.circle,
-                            border: Border.all(color: Colors.green, width: 2),
-                          ),
+                        _buildLegendItem(
+                          color: Colors.grey.shade200,
+                          borderColor: null,
+                          label: 'No Activity',
                         ),
-                        const SizedBox(width: 6),
-                        const Text(
-                          'Sudah Check In',
-                          style: TextStyle(fontSize: 13, color: Colors.black54),
-                        ),
-                        const SizedBox(width: 12),
-                        Icon(Icons.check_circle, color: Colors.blue, size: 16),
-                        const SizedBox(width: 4),
-                        const Text(
-                          'Sudah Check Out',
-                          style: TextStyle(fontSize: 13, color: Colors.black54),
+                        _buildLegendItem(
+                          color: Colors.red.shade100,
+                          borderColor: Colors.red,
+                          label: 'Absent',
                         ),
                       ],
                     ),
@@ -586,10 +582,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
             Center(
               child: Text(
                 'Periode: ${firstDayOfMonth.day}/${firstDayOfMonth.month}/${firstDayOfMonth.year} - ${lastDayOfMonth.day}/${lastDayOfMonth.month}/${lastDayOfMonth.year}',
-                style: const TextStyle(
-                  fontSize: 14,
-                  color: Colors.black54,
-                ),
+                style: const TextStyle(fontSize: 14, color: Colors.black54),
               ),
             ),
           ],
@@ -616,112 +609,214 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              'Results & Statistics',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-                color: Colors.red,
-              ),
-            ),
-            const SizedBox(height: 16),
-            
-            // Working Hours Summary
             Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Expanded(
-                  child: _buildStatCard(
-                    'Total Working Hours',
-                    '${statistics['totalWorkingMinutes'] ?? 0} min',
-                    Icons.access_time,
-                    Colors.blue,
+                const Text(
+                  'Attendance Details',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.red,
                   ),
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: _buildStatCard(
-                    'Average Daily',
-                    '${statistics['averageWorkingMinutes'] ?? 0} min',
-                    Icons.trending_up,
-                    Colors.green,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            
-            // Completion Rate
-            Row(
-              children: [
-                Expanded(
-                  child: _buildStatCard(
-                    'Completion Rate',
-                    '${statistics['completionRate'] ?? 0}%',
-                    Icons.check_circle,
-                    Colors.orange,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: _buildStatCard(
-                    'Completed Days',
-                    '${statistics['completedDays'] ?? 0}/${statistics['totalDays'] ?? 0}',
-                    Icons.calendar_today,
-                    Colors.purple,
+                Text(
+                  _formatDate(selectedDate),
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: Colors.grey[600],
+                    fontWeight: FontWeight.w500,
                   ),
                 ),
               ],
             ),
             const SizedBox(height: 16),
-            
-            // Progress Bar
-            const Text(
-              'Monthly Progress',
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-                color: Colors.black87,
-              ),
-            ),
-            const SizedBox(height: 8),
-            LinearProgressIndicator(
-              value: statistics['totalDays'] != null && statistics['totalDays'] > 0
-                  ? (statistics['completedDays'] ?? 0) / statistics['totalDays']
-                  : 0.0,
-              backgroundColor: Colors.grey[300],
-              valueColor: const AlwaysStoppedAnimation<Color>(Colors.red),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              '${statistics['completedDays'] ?? 0} of ${statistics['totalDays'] ?? 0} days completed',
-              style: const TextStyle(
-                fontSize: 12,
-                color: Colors.black54,
-              ),
-            ),
+
+            // Statistics for selected date/period
+            _buildSelectedDateStatistics(),
             
             const SizedBox(height: 16),
-            
-            // Recent Records
-            if (attendanceRecords.isNotEmpty) ...[
-              const Text(
-                'Recent Records',
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: Colors.black87,
-                ),
-              ),
-              const SizedBox(height: 8),
-              ...attendanceRecords.take(5).map((record) => _buildRecordItem(record)),
-            ],
+
+            // Attendance Details for selected date
+            AttendanceListWidget(
+              attendanceRecords: attendanceRecords,
+              selectedDate: selectedDate,
+              storeCodeMap: storeCodeMap,
+              storeAddressMap: storeAddressMap,
+            ),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildStatCard(String title, String value, IconData icon, Color color) {
+  Widget _buildSelectedDateStatistics() {
+    // Calculate statistics for selected date or current period
+    final recordsForPeriod = attendanceRecords.where((record) {
+      if (selectedDate.day == DateTime.now().day && 
+          selectedDate.month == DateTime.now().month && 
+          selectedDate.year == DateTime.now().year) {
+        // If today is selected, show monthly statistics
+        return record.date.month == selectedDate.month && 
+               record.date.year == selectedDate.year;
+      } else {
+        // If specific date selected, show that date only
+        return record.date.day == selectedDate.day &&
+               record.date.month == selectedDate.month && 
+               record.date.year == selectedDate.year;
+      }
+    }).toList();
+
+    final totalMasuk = recordsForPeriod.length;
+    final uniqueStores = recordsForPeriod
+        .expand((r) => r.details)
+        .map((d) => d.storeId)
+        .toSet()
+        .length;
+    
+    final noOutCount = recordsForPeriod
+        .expand((r) => r.details)
+        .where((d) => d.checkOutTime == null)
+        .length;
+    
+    final lessThan5MinCount = recordsForPeriod
+        .expand((r) => r.details)
+        .where((d) {
+          if (d.checkOutTime == null) return false;
+          final duration = _calculateDetailDuration(d);
+          return duration < 5;
+        })
+        .length;
+
+    final totalWorkingMinutes = recordsForPeriod
+        .expand((r) => r.details)
+        .where((d) => d.checkOutTime != null)
+        .map((d) => _calculateDetailDuration(d))
+        .fold(0, (sum, duration) => sum + duration);
+
+    final averageDaily = recordsForPeriod.isNotEmpty 
+        ? totalWorkingMinutes ~/ recordsForPeriod.length 
+        : 0;
+
+    final completionRate = recordsForPeriod.isNotEmpty
+        ? (recordsForPeriod.where((r) => r.details.any((d) => d.checkOutTime != null)).length / recordsForPeriod.length * 100).round()
+        : 0;
+
+    return Column(
+      children: [
+        // First row statistics
+        Row(
+          children: [
+            Expanded(
+              child: _buildStatCard(
+                'Total Masuk',
+                '$totalMasuk',
+                Icons.login,
+                Colors.green,
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: _buildStatCard(
+                'Unique Store',
+                '$uniqueStores',
+                Icons.store,
+                Colors.blue,
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: _buildStatCard(
+                'No Out',
+                '$noOutCount',
+                Icons.logout,
+                Colors.orange,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        
+        // Second row statistics
+        Row(
+          children: [
+            Expanded(
+              child: _buildStatCard(
+                '<5 Menit',
+                '$lessThan5MinCount',
+                Icons.timer,
+                Colors.red,
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: _buildStatCard(
+                'Working Hours',
+                '${(totalWorkingMinutes / 60).toStringAsFixed(1)}h',
+                Icons.access_time,
+                Colors.purple,
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: _buildStatCard(
+                'Avg Daily',
+                '${(averageDaily / 60).toStringAsFixed(1)}h',
+                Icons.trending_up,
+                Colors.teal,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        
+        // Progress bar for completion rate
+        Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Completion Rate: $completionRate%',
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  LinearProgressIndicator(
+                    value: completionRate / 100,
+                    backgroundColor: Colors.grey[300],
+                    valueColor: AlwaysStoppedAnimation<Color>(
+                      completionRate >= 80 ? Colors.green : 
+                      completionRate >= 60 ? Colors.orange : Colors.red,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  int _calculateDetailDuration(AttendanceDetail detail) {
+    if (detail.checkOutTime == null) return 0;
+    
+    final checkInMinutes = detail.checkInTime.hour * 60 + detail.checkInTime.minute;
+    final checkOutMinutes = detail.checkOutTime!.hour * 60 + detail.checkOutTime!.minute;
+    
+    return checkOutMinutes - checkInMinutes;
+  }
+
+  Widget _buildStatCard(
+    String title,
+    String value,
+    IconData icon,
+    Color color,
+  ) {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
@@ -743,100 +838,12 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
           ),
           Text(
             title,
-            style: const TextStyle(
-              fontSize: 10,
-              color: Colors.black54,
-            ),
+            style: const TextStyle(fontSize: 10, color: Colors.black54),
             textAlign: TextAlign.center,
           ),
         ],
       ),
     );
   }
-
-  Widget _buildRecordItem(AttendanceRecord record) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.grey[50],
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Colors.grey[200]!),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 8,
-            height: 8,
-            decoration: BoxDecoration(
-              color: record.isCompleted ? Colors.green : 
-                     record.isCheckedIn ? Colors.orange : Colors.grey,
-              shape: BoxShape.circle,
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  '${record.date.day}/${record.date.month}/${record.date.year}',
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w600,
-                    fontSize: 14,
-                  ),
-                ),
-                if (record.storeName != null)
-                  Text(
-                    'Store: ${record.storeName}',
-                    style: const TextStyle(
-                      fontSize: 12,
-                      color: Colors.black54,
-                    ),
-                  ),
-                if (record.isCompleted)
-                  Text(
-                    'Working: ${record.workingHoursFormatted}',
-                    style: const TextStyle(
-                      fontSize: 12,
-                      color: Colors.green,
-                    ),
-                  ),
-              ],
-            ),
-          ),
-          if (record.checkInTime != null)
-            Text(
-              '${record.checkInTime!.hour.toString().padLeft(2, '0')}:${record.checkInTime!.minute.toString().padLeft(2, '0')}',
-              style: const TextStyle(
-                fontSize: 12,
-                color: Colors.black54,
-              ),
-            ),
-        ],
-      ),
-    );
-  }
 }
 
-class _CalendarDayLabel extends StatelessWidget {
-  final String label;
-  const _CalendarDayLabel(this.label);
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      width: 36,
-      height: 24,
-      child: Center(
-        child: Text(
-          label,
-          style: const TextStyle(
-            fontWeight: FontWeight.bold,
-            color: Colors.black54,
-          ),
-        ),
-      ),
-    );
-  }
-}

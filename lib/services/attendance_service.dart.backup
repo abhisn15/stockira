@@ -681,4 +681,130 @@ class AttendanceService {
     );
   }
 
+  // Break functionality
+  Future<AttendanceRecord> startBreak({required String recordId}) async {
+    try {
+      final allRecords = await getAllRecords();
+      final recordIndex = allRecords.indexWhere((r) => r.id.toString() == recordId);
+      
+      if (recordIndex == -1) {
+        throw Exception('Attendance record not found');
+      }
+
+      final record = allRecords[recordIndex];
+      
+      // Check if already on break
+      if (record.isOnBreak) {
+        throw Exception('Already on break');
+      }
+
+      // Check if checked in
+      if (!record.isCheckedIn) {
+        throw Exception('Must be checked in to start break');
+      }
+
+      // Check total break time limit (60 minutes)
+      if (record.totalBreakMinutes >= 60) {
+        throw Exception('Daily break limit (60 minutes) reached');
+      }
+
+      final now = DateTime.now();
+      final updatedRecord = record.copyWith(
+        isOnBreak: true,
+        breakStartTime: now,
+        updatedAt: now,
+      );
+
+      allRecords[recordIndex] = updatedRecord;
+      await saveRecord(updatedRecord);
+      
+      print('✅ Break started at ${now.toString()}');
+      return updatedRecord;
+    } catch (e) {
+      print('❌ Error starting break: $e');
+      rethrow;
+    }
+  }
+
+  Future<AttendanceRecord> endBreak({required String recordId}) async {
+    try {
+      final allRecords = await getAllRecords();
+      final recordIndex = allRecords.indexWhere((r) => r.id.toString() == recordId);
+      
+      if (recordIndex == -1) {
+        throw Exception('Attendance record not found');
+      }
+
+      final record = allRecords[recordIndex];
+      
+      // Check if on break
+      if (!record.isOnBreak || record.breakStartTime == null) {
+        throw Exception('Not currently on break');
+      }
+
+      final now = DateTime.now();
+      final breakDuration = now.difference(record.breakStartTime!).inMinutes;
+      
+      // Create new break session
+      final breakSession = BreakSession(
+        startTime: record.breakStartTime!,
+        endTime: now,
+        duration: breakDuration,
+      );
+
+      // Update break sessions list
+      final updatedBreakSessions = List<BreakSession>.from(record.breakSessions);
+      updatedBreakSessions.add(breakSession);
+
+      final updatedRecord = record.copyWith(
+        isOnBreak: false,
+        breakStartTime: null,
+        totalBreakMinutes: record.totalBreakMinutes + breakDuration,
+        breakSessions: updatedBreakSessions,
+        updatedAt: now,
+      );
+
+      allRecords[recordIndex] = updatedRecord;
+      await saveRecord(updatedRecord);
+      
+      print('✅ Break ended. Duration: ${breakDuration}m. Total break time: ${updatedRecord.totalBreakMinutes}m');
+      return updatedRecord;
+    } catch (e) {
+      print('❌ Error ending break: $e');
+      rethrow;
+    }
+  }
+
+  // Force end break when limit reached
+  Future<AttendanceRecord> forceEndBreak({required String recordId}) async {
+    try {
+      print('⚠️ Force ending break due to 60-minute limit');
+      return await endBreak(recordId: recordId);
+    } catch (e) {
+      print('❌ Error force ending break: $e');
+      rethrow;
+    }
+  }
+
+  // Get current break duration in seconds
+  int getCurrentBreakDuration(AttendanceRecord record) {
+    if (!record.isOnBreak || record.breakStartTime == null) {
+      return 0;
+    }
+    return DateTime.now().difference(record.breakStartTime!).inSeconds;
+  }
+
+  // Check if break limit is approaching (50+ minutes)
+  bool isBreakLimitApproaching(AttendanceRecord record) {
+    if (!record.isOnBreak) return false;
+    final currentBreakMinutes = getCurrentBreakDuration(record) ~/ 60;
+    return (record.totalBreakMinutes + currentBreakMinutes) >= 50;
+  }
+
+  // Check if break limit is reached
+  bool isBreakLimitReached(AttendanceRecord record) {
+    if (!record.isOnBreak) return false;
+    final currentBreakMinutes = getCurrentBreakDuration(record) ~/ 60;
+    return (record.totalBreakMinutes + currentBreakMinutes) >= 60;
+  }
 }

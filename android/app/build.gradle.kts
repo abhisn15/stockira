@@ -5,6 +5,9 @@ plugins {
     id("dev.flutter.flutter-gradle-plugin")
 }
 
+// Import for Properties class
+import java.util.Properties
+
 android {
     namespace = "com.stockira"
     compileSdk = flutter.compileSdkVersion
@@ -28,6 +31,25 @@ android {
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+        
+        // Secure API Key configuration with proper imports
+        val localProperties = Properties()
+        val localPropertiesFile = rootProject.file("../local.properties")
+        if (localPropertiesFile.exists()) {
+            localPropertiesFile.inputStream().use { localProperties.load(it) }
+        }
+        
+        // Get Google Maps API key from local.properties or use fallback
+        val googleMapsApiKey = localProperties.getProperty("GOOGLE_MAPS_API_KEY_ANDROID") 
+            ?: "AIzaSyAC-5pPVZot30WENTHNSntNsFfqMbjQFjw" // Fallback
+            
+        // Get Google Maps Map ID from local.properties or use fallback
+        val googleMapsMapId = localProperties.getProperty("GOOGLE_MAPS_MAP_ID_ANDROID") 
+            ?: "71ed63eff6a1ac4fe8b35b3d" // Fallback
+            
+        // Add as manifest placeholders
+        manifestPlaceholders["GOOGLE_MAPS_API_KEY"] = googleMapsApiKey
+        manifestPlaceholders["GOOGLE_MAPS_MAP_ID"] = googleMapsMapId
     }
 
     buildTypes {

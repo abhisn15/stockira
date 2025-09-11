@@ -1,50 +1,91 @@
-class BreakSession {
-  final DateTime startTime;
-  final DateTime? endTime;
-  final int? duration; // in minutes
+import 'package:flutter/material.dart';
 
-  BreakSession({
-    required this.startTime,
-    this.endTime,
-    this.duration,
+class AttendanceDetail {
+  final int id;
+  final int attendanceId;
+  final int storeId;
+  final String storeName;
+  final bool isOutItinerary;
+  final bool isApproved;
+  final String? noteIn;
+  final String? noteOut;
+  final TimeOfDay checkInTime;
+  final TimeOfDay? checkOutTime;
+  final String? imageUrlIn;
+  final String? imageUrlOut;
+  final String? imagePathIn;
+  final String? imagePathOut;
+  final double? distanceIn;
+  final double? distanceOut;
+  final double latitudeIn;
+  final double longitudeIn;
+  final double? latitudeOut;
+  final double? longitudeOut;
+
+  AttendanceDetail({
+    required this.id,
+    required this.attendanceId,
+    required this.storeId,
+    required this.storeName,
+    required this.isOutItinerary,
+    required this.isApproved,
+    this.noteIn,
+    this.noteOut,
+    required this.checkInTime,
+    this.checkOutTime,
+    this.imageUrlIn,
+    this.imageUrlOut,
+    this.imagePathIn,
+    this.imagePathOut,
+    this.distanceIn,
+    this.distanceOut,
+    required this.latitudeIn,
+    required this.longitudeIn,
+    this.latitudeOut,
+    this.longitudeOut,
   });
 
-  bool get isActive => endTime == null;
-
-  int get actualDuration => duration ?? (endTime?.difference(startTime).inMinutes ?? 0);
-
-  Map<String, dynamic> toJson() {
-    return {
-      'start_time': startTime.toIso8601String(),
-      'end_time': endTime?.toIso8601String(),
-      'duration': duration,
-    };
-  }
-
-  factory BreakSession.fromJson(Map<String, dynamic> json) {
-    return BreakSession(
-      startTime: DateTime.parse(json['start_time']),
-      endTime: json['end_time'] != null ? DateTime.parse(json['end_time']) : null,
-      duration: json['duration'],
+  factory AttendanceDetail.fromJson(Map<String, dynamic> json) {
+    return AttendanceDetail(
+      id: json['id'],
+      attendanceId: json['attendance_id'],
+      storeId: json['store_id'],
+      storeName: json['store_name'],
+      isOutItinerary: json['is_out_itinerary'] == 1,
+      isApproved: json['is_approved'] == 1,
+      noteIn: json['note_in'],
+      noteOut: json['note_out'],
+      checkInTime: _parseTimeOfDay(json['check_in_time']),
+      checkOutTime: json['check_out_time'] != null
+          ? _parseTimeOfDay(json['check_out_time'])
+          : null,
+      imageUrlIn: json['image_url_in'],
+      imageUrlOut: json['image_url_out'],
+      imagePathIn: json['image_path_in'],
+      imagePathOut: json['image_path_out'],
+      distanceIn: json['distance_in'] != null ? double.tryParse(json['distance_in'].toString()) : null,
+      distanceOut: json['distance_out'] != null ? double.tryParse(json['distance_out'].toString()) : null,
+      latitudeIn: double.parse(json['latitude_in'].toString()),
+      longitudeIn: double.parse(json['longitude_in'].toString()),
+      latitudeOut: json['latitude_out'] != null
+          ? double.parse(json['latitude_out'].toString())
+          : null,
+      longitudeOut: json['longitude_out'] != null
+          ? double.parse(json['longitude_out'].toString())
+          : null,
     );
   }
 
-  BreakSession copyWith({
-    DateTime? startTime,
-    DateTime? endTime,
-    int? duration,
-  }) {
-    return BreakSession(
-      startTime: startTime ?? this.startTime,
-      endTime: endTime ?? this.endTime,
-      duration: duration ?? this.duration,
-    );
+  static TimeOfDay _parseTimeOfDay(String timeString) {
+    final parts = timeString.split(':');
+    return TimeOfDay(hour: int.parse(parts[0]), minute: int.parse(parts[1]));
   }
 }
 
 class AttendanceRecord {
   final dynamic id; // Can be String or int
   final int? employeeId;
+  final String? employeeName;
   final DateTime date;
   final DateTime? checkInTime;
   final DateTime? checkOutTime;
@@ -53,21 +94,21 @@ class AttendanceRecord {
   final String? storeAddress;
   final double? latitude;
   final double? longitude;
+  final double? distance; // in meters
   final int? duration; // in minutes
-  final String status; // 'checked_in', 'checked_out', 'completed', 'permit', 'absent', 'no_activity'
+  final String
+  status; // 'checked_in', 'checked_out', 'completed', 'permit', 'absent', 'no_activity'
   final String? note;
+  final bool isApproved;
+  final bool hasApprovedPermit;
+  final List<AttendanceDetail> details;
   final DateTime? createdAt;
   final DateTime? updatedAt;
-  
-  // Break/rest functionality
-  final bool isOnBreak;
-  final DateTime? breakStartTime;
-  final int totalBreakMinutes; // total break time in minutes
-  final List<BreakSession> breakSessions;
 
   AttendanceRecord({
     required this.id,
     this.employeeId,
+    this.employeeName,
     required this.date,
     this.checkInTime,
     this.checkOutTime,
@@ -76,21 +117,22 @@ class AttendanceRecord {
     this.storeAddress,
     this.latitude,
     this.longitude,
+    this.distance,
     this.duration,
     this.status = 'pending',
     this.note,
+    this.isApproved = false,
+    this.hasApprovedPermit = false,
+    this.details = const [],
     this.createdAt,
     this.updatedAt,
-    this.isOnBreak = false,
-    this.breakStartTime,
-    this.totalBreakMinutes = 0,
-    this.breakSessions = const [],
   });
 
   Map<String, dynamic> toJson() {
     return {
       'id': id,
       'employee_id': employeeId,
+      'employee_name': employeeName,
       'date': date.toIso8601String(),
       'check_in_time': checkInTime?.toIso8601String(),
       'check_out_time': checkOutTime?.toIso8601String(),
@@ -99,47 +141,60 @@ class AttendanceRecord {
       'store_address': storeAddress,
       'latitude': latitude,
       'longitude': longitude,
+      'distance': distance,
       'duration': duration,
       'status': status,
       'note': note,
       'created_at': createdAt?.toIso8601String(),
       'updated_at': updatedAt?.toIso8601String(),
-      'is_on_break': isOnBreak,
-      'break_start_time': breakStartTime?.toIso8601String(),
-      'total_break_minutes': totalBreakMinutes,
-      'break_sessions': breakSessions.map((session) => session.toJson()).toList(),
     };
   }
 
   factory AttendanceRecord.fromJson(Map<String, dynamic> json) {
+    // Parse details first to get the is_approved status
+    final details = (json['details'] as List<dynamic>?)
+        ?.map((detail) => AttendanceDetail.fromJson(detail))
+        .toList() ?? [];
+    
+    // Always use data level is_approved (even if 0, still consider as approved)
+    bool isApproved = true; // Default to approved for attendance records
+    
     return AttendanceRecord(
       id: json['id'],
       employeeId: json['employee_id'],
+      employeeName: json['employee_name'],
       date: DateTime.parse(json['date']),
-      checkInTime: json['check_in_time'] != null ? DateTime.parse(json['check_in_time']) : null,
-      checkOutTime: json['check_out_time'] != null ? DateTime.parse(json['check_out_time']) : null,
+      checkInTime: json['check_in_time'] != null
+          ? DateTime.parse(json['check_in_time'])
+          : null,
+      checkOutTime: json['check_out_time'] != null
+          ? DateTime.parse(json['check_out_time'])
+          : null,
       storeId: json['store_id'],
       storeName: json['store_name'],
       storeAddress: json['store_address'],
       latitude: json['latitude']?.toDouble(),
       longitude: json['longitude']?.toDouble(),
+      distance: json['distance']?.toDouble(),
       duration: json['duration'],
       status: json['status'] ?? 'pending',
       note: json['note'],
-      createdAt: json['created_at'] != null ? DateTime.parse(json['created_at']) : null,
-      updatedAt: json['updated_at'] != null ? DateTime.parse(json['updated_at']) : null,
-      isOnBreak: json['is_on_break'] ?? false,
-      breakStartTime: json['break_start_time'] != null ? DateTime.parse(json['break_start_time']) : null,
-      totalBreakMinutes: json['total_break_minutes'] ?? 0,
-      breakSessions: (json['break_sessions'] as List<dynamic>?)
-          ?.map((session) => BreakSession.fromJson(session as Map<String, dynamic>))
-          .toList() ?? [],
+      isApproved: isApproved,
+      hasApprovedPermit: json['has_approved_permit'] ?? false,
+      details: details,
+      createdAt: json['created_at'] != null
+          ? DateTime.parse(json['created_at'])
+          : null,
+      updatedAt: json['updated_at'] != null
+          ? DateTime.parse(json['updated_at'])
+          : null,
     );
   }
 
   AttendanceRecord copyWith({
     dynamic id,
     int? employeeId,
+    String? employeeName,
     DateTime? date,
     DateTime? checkInTime,
     DateTime? checkOutTime,
@@ -148,37 +203,41 @@ class AttendanceRecord {
     String? storeAddress,
     double? latitude,
     double? longitude,
+    double? distance,
     int? duration,
     String? status,
     String? note,
+    bool? isApproved,
+    bool? hasApprovedPermit,
+    List<AttendanceDetail>? details,
     DateTime? createdAt,
     DateTime? updatedAt,
-    bool? isOnBreak,
-    DateTime? breakStartTime,
-    int? totalBreakMinutes,
-    List<BreakSession>? breakSessions,
-    bool clearCheckOutTime = false, // ✅ Explicit parameter for clearing checkout time
+    bool clearCheckOutTime =
+        false, // ✅ Explicit parameter for clearing checkout time
   }) {
     return AttendanceRecord(
       id: id ?? this.id,
       employeeId: employeeId ?? this.employeeId,
+      employeeName: employeeName ?? this.employeeName,
       date: date ?? this.date,
       checkInTime: checkInTime ?? this.checkInTime,
-      checkOutTime: clearCheckOutTime ? null : (checkOutTime ?? this.checkOutTime), // ✅ Explicit null handling
+      checkOutTime: clearCheckOutTime
+          ? null
+          : (checkOutTime ?? this.checkOutTime), // ✅ Explicit null handling
       storeId: storeId ?? this.storeId,
       storeName: storeName ?? this.storeName,
       storeAddress: storeAddress ?? this.storeAddress,
       latitude: latitude ?? this.latitude,
       longitude: longitude ?? this.longitude,
+      distance: distance ?? this.distance,
       duration: duration ?? this.duration,
       status: status ?? this.status,
       note: note ?? this.note,
+      isApproved: isApproved ?? this.isApproved,
+      hasApprovedPermit: hasApprovedPermit ?? this.hasApprovedPermit,
+      details: details ?? this.details,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
-      isOnBreak: isOnBreak ?? this.isOnBreak,
-      breakStartTime: breakStartTime ?? this.breakStartTime,
-      totalBreakMinutes: totalBreakMinutes ?? this.totalBreakMinutes,
-      breakSessions: breakSessions ?? this.breakSessions,
     );
   }
 
@@ -188,20 +247,13 @@ class AttendanceRecord {
 
   int get workingMinutes {
     if (checkInTime == null) return 0;
-    
+
     final endTime = checkOutTime ?? DateTime.now();
     final totalMinutes = endTime.difference(checkInTime!).inMinutes;
-    
-    // Subtract break time
-    return totalMinutes - totalBreakMinutes;
+
+    return totalMinutes;
   }
 
-  int get totalMinutesIncludingBreak {
-    if (checkInTime == null) return 0;
-    
-    final endTime = checkOutTime ?? DateTime.now();
-    return endTime.difference(checkInTime!).inMinutes;
-  }
 
   String get workingHoursFormatted {
     final minutes = workingMinutes;
@@ -209,5 +261,4 @@ class AttendanceRecord {
     final remainingMinutes = minutes % 60;
     return '${hours}h ${remainingMinutes}m';
   }
-
 }

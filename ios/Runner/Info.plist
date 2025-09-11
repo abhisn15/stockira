@@ -9,7 +9,7 @@
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
-	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+	<string>com.stockira</string>
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
@@ -47,17 +47,24 @@
 	<true/>
 	<!-- Camera permission for QR code scanning and attendance photos -->
 	<key>NSCameraUsageDescription</key>
-	<string>This app needs access to camera to scan QR codes and take attendance photos.</string>
+	<string>Stockira needs camera access to take attendance photos during check-in and check-out. Photos are required for verification purposes.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Stockira needs photo library access to select images for attendance verification during check-in and check-out.</string>
 	
 	<!-- Location permissions for attendance tracking -->
 	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>This app needs access to location to track attendance check-in and check-out locations.</string>
+	<string>Stockira needs location access to verify check-in locations and track attendance accurately. Location data helps ensure you're checking in from the correct store location.</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
-	<string>This app needs access to location to track attendance check-in and check-out locations.</string>
+	<string>Stockira needs location access to verify check-in locations and track attendance accurately. Location data helps ensure you're checking in from the correct store location.</string>
+	<key>NSLocationTemporaryUsageDescriptionDictionary</key>
+	<dict>
+		<key>MapsCheckinScreen</key>
+		<string>Location access is required for attendance tracking and store verification.</string>
+	</dict>
 	
-	<!-- Google Maps API Key -->
+	<!-- Google Maps API Key (Managed by build script) -->
 	<key>GMSApiKey</key>
-	<string>AIzaSyDQaKNL--c9iWfMAeGrW01Rai-_NeVoziE</string>
+	<string>AIzaSyCdJRx2WW7pkf3QGCwV6NY7RphAS683kzY</string>
 	
 	<!-- Network permissions for API access -->
 	<key>NSAppTransportSecurity</key>
