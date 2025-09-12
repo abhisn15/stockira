@@ -10,13 +10,19 @@ class ItineraryResponse {
   });
 
   factory ItineraryResponse.fromJson(Map<String, dynamic> json) {
-    return ItineraryResponse(
-      success: json['success'] as bool,
-      message: json['message'] as String,
-      data: (json['data'] as List<dynamic>)
-          .map((item) => Itinerary.fromJson(item as Map<String, dynamic>))
-          .toList(),
-    );
+    try {
+      return ItineraryResponse(
+        success: json['success'] as bool? ?? false,
+        message: json['message'] as String? ?? 'Unknown error',
+        data: (json['data'] as List<dynamic>?)
+            ?.map((item) => Itinerary.fromJson(item as Map<String, dynamic>))
+            .toList() ?? [],
+      );
+    } catch (e) {
+      print('Error parsing ItineraryResponse from JSON: $e');
+      print('JSON data: $json');
+      rethrow;
+    }
   }
 
   Map<String, dynamic> toJson() {
@@ -44,15 +50,21 @@ class Itinerary {
   });
 
   factory Itinerary.fromJson(Map<String, dynamic> json) {
-    return Itinerary(
-      id: json['id'] as int,
-      date: json['date'] as String,
-      stores: (json['stores'] as List<dynamic>)
-          .map((item) => Store.fromJson(item as Map<String, dynamic>))
-          .toList(),
-      createdAt: json['created_at'] as String,
-      updatedAt: json['updated_at'] as String,
-    );
+    try {
+      return Itinerary(
+        id: json['id'] as int,
+        date: json['date'] as String,
+        stores: (json['stores'] as List<dynamic>?)
+            ?.map((item) => Store.fromJson(item as Map<String, dynamic>))
+            .toList() ?? [],
+        createdAt: json['created_at'] as String? ?? '',
+        updatedAt: json['updated_at'] as String? ?? '',
+      );
+    } catch (e) {
+      print('Error parsing Itinerary from JSON: $e');
+      print('JSON data: $json');
+      rethrow;
+    }
   }
 
   Map<String, dynamic> toJson() {
@@ -78,11 +90,11 @@ class Store {
   final bool isDistributor;
   final bool isClose;
   final bool isRequested;
-  final String latitude;
-  final String longitude;
+  final String? latitude;
+  final String? longitude;
   final String? alternateLatitude;
   final String? alternateLongitude;
-  final String address;
+  final String? address;
 
   Store({
     required this.id,
@@ -96,32 +108,38 @@ class Store {
     required this.isDistributor,
     required this.isClose,
     required this.isRequested,
-    required this.latitude,
-    required this.longitude,
+    this.latitude,
+    this.longitude,
     this.alternateLatitude,
     this.alternateLongitude,
-    required this.address,
+    this.address,
   });
 
   factory Store.fromJson(Map<String, dynamic> json) {
-    return Store(
-      id: json['id'] as int,
-      name: json['name'] as String,
-      code: json['code'] as String,
-      category: json['category'] as String?,
-      distribution: json['distribution'] as String?,
-      ownerName: json['owner_name'] as String?,
-      ownerPhone: json['owner_phone'] as String?,
-      remarks: json['remarks'] as String?,
-      isDistributor: json['is_distributor'] as bool,
-      isClose: json['is_close'] as bool,
-      isRequested: json['is_requested'] as bool,
-      latitude: json['latitude'] as String,
-      longitude: json['longitude'] as String,
-      alternateLatitude: json['alternate_latitude'] as String?,
-      alternateLongitude: json['alternate_longitude'] as String?,
-      address: json['address'] as String,
-    );
+    try {
+      return Store(
+        id: json['id'] as int,
+        name: json['name'] as String,
+        code: json['code'] as String,
+        category: json['category'] as String?,
+        distribution: json['distribution'] as String?,
+        ownerName: json['owner_name'] as String?,
+        ownerPhone: json['owner_phone'] as String?,
+        remarks: json['remarks'] as String?,
+        isDistributor: json['is_distributor'] as bool? ?? false,
+        isClose: json['is_close'] as bool? ?? false,
+        isRequested: json['is_requested'] as bool? ?? false,
+        latitude: json['latitude'] as String?,
+        longitude: json['longitude'] as String?,
+        alternateLatitude: json['alternate_latitude'] as String?,
+        alternateLongitude: json['alternate_longitude'] as String?,
+        address: json['address'] as String?,
+      );
+    } catch (e) {
+      print('Error parsing Store from JSON: $e');
+      print('JSON data: $json');
+      rethrow;
+    }
   }
 
   Map<String, dynamic> toJson() {

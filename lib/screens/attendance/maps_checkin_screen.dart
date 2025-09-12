@@ -170,8 +170,8 @@ class _MapsCheckinScreenState extends State<MapsCheckinScreen> {
     return Geolocator.distanceBetween(
       _currentPosition!.latitude,
       _currentPosition!.longitude,
-      double.parse(_selectedStore!.latitude),
-      double.parse(_selectedStore!.longitude),
+      double.parse(_selectedStore!.latitude ?? '0'),
+      double.parse(_selectedStore!.longitude ?? '0'),
     );
   }
 
@@ -229,8 +229,8 @@ class _MapsCheckinScreenState extends State<MapsCheckinScreen> {
         _mapController!.animateCamera(
           CameraUpdate.newLatLngZoom(
             LatLng(
-              double.parse(_selectedStore!.latitude),
-              double.parse(_selectedStore!.longitude),
+              double.parse(_selectedStore!.latitude ?? '0'),
+              double.parse(_selectedStore!.longitude ?? '0'),
             ),
             16.0,
           ),
@@ -513,8 +513,8 @@ class _MapsCheckinScreenState extends State<MapsCheckinScreen> {
                   ? Geolocator.distanceBetween(
                       _currentPosition!.latitude,
                       _currentPosition!.longitude,
-                      double.parse(store.latitude),
-                      double.parse(store.longitude),
+                      double.parse(store.latitude ?? '0'),
+                      double.parse(store.longitude ?? '0'),
                     )
                   : 0.0;
 
@@ -545,7 +545,7 @@ class _MapsCheckinScreenState extends State<MapsCheckinScreen> {
                     children: [
                       const SizedBox(height: 4),
                       Text(
-                        store.address,
+                        store.address ?? '',
                         style: TextStyle(
                           color: Colors.grey[600],
                           fontSize: 13,
@@ -634,7 +634,7 @@ class _MapsCheckinScreenState extends State<MapsCheckinScreen> {
                       ),
                     ),
                     Text(
-                      _selectedStore!.address,
+                      _selectedStore!.address ?? '',
                       style: TextStyle(
                         color: Colors.grey[600],
                         fontSize: 14,
@@ -1135,13 +1135,13 @@ class _MapsCheckinScreenState extends State<MapsCheckinScreen> {
           Marker(
             markerId: MarkerId('store_${_selectedStore!.id}'),
             position: LatLng(
-              double.parse(_selectedStore!.latitude),
-              double.parse(_selectedStore!.longitude),
+              double.parse(_selectedStore!.latitude ?? '0'),
+              double.parse(_selectedStore!.longitude ?? '0'),
             ),
             icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed),
             infoWindow: InfoWindow(
               title: _selectedStore!.name,
-              snippet: _selectedStore!.address,
+              snippet: _selectedStore!.address ?? '',
             ),
           ),
         );
@@ -1232,8 +1232,8 @@ class _MapsCheckinScreenState extends State<MapsCheckinScreen> {
                     ? Geolocator.distanceBetween(
                         _currentPosition!.latitude,
                         _currentPosition!.longitude,
-                        double.parse(store.latitude),
-                        double.parse(store.longitude),
+                        double.parse(store.latitude ?? '0'),
+                        double.parse(store.longitude ?? '0'),
                       )
                     : 0.0;
 
@@ -1252,7 +1252,7 @@ class _MapsCheckinScreenState extends State<MapsCheckinScreen> {
                     subtitle: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(store.address, style: TextStyle(color: Colors.grey[600], fontSize: 13)),
+                        Text(store.address ?? '', style: TextStyle(color: Colors.grey[600], fontSize: 13)),
                         const SizedBox(height: 4),
                         Row(
                           children: [
@@ -1341,7 +1341,7 @@ class _MapsCheckinScreenState extends State<MapsCheckinScreen> {
                         style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                       ),
                       Text(
-                        _selectedStore!.address,
+                        _selectedStore!.address ?? '',
                         style: TextStyle(color: Colors.grey[600], fontSize: 14),
                       ),
                     ],

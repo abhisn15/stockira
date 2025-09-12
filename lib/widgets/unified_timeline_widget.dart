@@ -53,12 +53,15 @@ class UnifiedTimelineWidget extends StatelessWidget {
   Widget _buildEmptyTimeline() {
     return Container(
       padding: const EdgeInsets.all(16),
+      width: double.infinity,
+      height: 300,
       decoration: BoxDecoration(
         color: Colors.grey[50],
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: Colors.grey[200]!),
       ),
       child: const Column(
+        mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Icon(
             Icons.access_time,

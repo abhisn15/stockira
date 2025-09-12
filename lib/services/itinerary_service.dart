@@ -75,15 +75,32 @@ class ItineraryService {
       print('Itinerary by date API response: ${response.statusCode}');
 
       if (response.statusCode == 200) {
-        final Map<String, dynamic> responseData = jsonDecode(response.body);
-        return ItineraryResponse.fromJson(responseData);
+        try {
+          final Map<String, dynamic> responseData = jsonDecode(response.body);
+          return ItineraryResponse.fromJson(responseData);
+        } catch (e) {
+          print('Error parsing itinerary response for date $date: $e');
+          return ItineraryResponse(
+            success: false,
+            message: 'Failed to parse itinerary data: ${e.toString()}',
+            data: [],
+          );
+        }
       } else {
-        final Map<String, dynamic> errorData = jsonDecode(response.body);
-        return ItineraryResponse(
-          success: false,
-          message: errorData['message'] ?? 'Failed to fetch itinerary for date',
-          data: [],
-        );
+        try {
+          final Map<String, dynamic> errorData = jsonDecode(response.body);
+          return ItineraryResponse(
+            success: false,
+            message: errorData['message'] ?? 'Failed to fetch itinerary for date',
+            data: [],
+          );
+        } catch (e) {
+          return ItineraryResponse(
+            success: false,
+            message: 'Failed to fetch itinerary for date (HTTP ${response.statusCode})',
+            data: [],
+          );
+        }
       }
     } catch (e) {
       print('Error fetching itinerary by date: $e');

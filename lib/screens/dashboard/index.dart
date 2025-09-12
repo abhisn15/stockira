@@ -5,7 +5,7 @@ import 'package:stockira/screens/attandance/index.dart';
 import 'package:stockira/screens/attendance/maps_checkin_simple.dart';
 import 'package:stockira/screens/permit/index.dart';
 import 'package:stockira/screens/itinerary/index.dart';
-import 'package:stockira/screens/reports/Survey/index.dart';
+import 'package:stockira/screens/reports/index.dart';
 import 'package:stockira/screens/auth/index.dart';
 import 'package:stockira/screens/url_setting/index.dart';
 import 'package:stockira/services/attendance_service.dart';
@@ -534,10 +534,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
   @override
   void initState() {
     super.initState();
-    
+
     // Debug security configuration on startup
     _mapsService.debugSecurity();
-    
+
     _loadActivitiesFromStorage();
     _loadTodayRecord();
     _loadProfile();
@@ -610,7 +610,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }).toList();
   }
 
-
   Future<void> _loadTodayRecord() async {
     try {
       print('🔄 Loading today record...');
@@ -618,12 +617,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
       print('📋 Record received: ${record?.toString()}');
       print('✅ Check-in status: ${record?.isCheckedIn}');
       print('🏪 Store name: ${record?.storeName}');
-      
+
       setState(() {
         todayRecord = record;
         isCheckedIn = record?.isCheckedIn ?? false;
       });
-      
+
       print('🎯 State updated - isCheckedIn: $isCheckedIn');
       print('🏪 State updated - store: ${todayRecord?.storeName}');
     } catch (e) {
@@ -1046,7 +1045,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Future<void> _handleCheckIn() async {
     try {
       print('🚀 Starting check-in process...');
-      
+
       // Check if itinerary is available
       if (itineraryList == null || itineraryList!.isEmpty) {
         print('❌ No itinerary available');
@@ -1062,7 +1061,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       }
 
       print('📍 Navigating to maps check-in screen...');
-      
+
       // Navigate directly to simplified maps check-in screen
       final result = await Navigator.of(context).push<bool>(
         MaterialPageRoute(
@@ -1076,7 +1075,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       // If check-in was successful, reload data and update UI
       if (result == true) {
         print('✅ Check-in successful, reloading data...');
-        
+
         // Show loading indicator
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -1095,14 +1094,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
             ),
           );
         }
-        
+
         // Use robust reload method
         await _forceReloadData();
-        
+
         // Add to activities with current time
         final now = DateTime.now();
         final timeString = _formatTimeForActivity(now);
-        
+
         setState(() {
           activities.insert(0, {
             'icon': Icons.login,
@@ -1116,7 +1115,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           });
         });
         _saveActivitiesToStorage();
-        
+
         print('✅ Dashboard updated successfully');
         print('🏪 Current store: ${todayRecord?.storeName}');
         print('✅ Is checked in: $isCheckedIn');
@@ -1133,41 +1132,41 @@ class _DashboardScreenState extends State<DashboardScreen> {
       );
     }
   }
-  
+
   Future<void> _forceReloadData() async {
     print('🔄 Force reloading all data...');
-    
+
     // Debug current attendance data
     await _attendanceService.debugAllRecords();
-    
+
     // Try multiple times to ensure data is loaded
     for (int i = 0; i < 3; i++) {
       print('🔄 Attempt ${i + 1} to reload data...');
       await _loadTodayRecord();
-      
+
       // If we successfully have the check-in data and isCheckedIn is true, break
       if (todayRecord?.checkInTime != null &&
           todayRecord?.checkOutTime == null) {
         print('✅ Successfully loaded ACTIVE check-in data on attempt ${i + 1}');
         break;
       }
-      
+
       print(
         '⚠️ Attempt ${i + 1}: checkIn=${todayRecord?.checkInTime}, checkOut=${todayRecord?.checkOutTime}, isCheckedIn=${todayRecord?.isCheckedIn}',
       );
-      
+
       // Wait before retry
       if (i < 2) {
         await Future.delayed(const Duration(milliseconds: 500));
       }
     }
-    
+
     // Force a setState to trigger rebuild
     setState(() {
       // This will trigger a rebuild
     });
   }
-  
+
   // Debug method to clear conflicting data
   Future<void> _clearOldAttendanceData() async {
     print('🧹 Clearing old attendance data...');
@@ -1186,7 +1185,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       print(
         '✅ Current state: isCheckedIn=$isCheckedIn, store=${todayRecord?.storeName}',
       );
-      
+
       // ✅ Guard: pastikan benar-benar sedang checked-in
       if (!isCheckedIn ||
           todayRecord == null ||
@@ -1200,7 +1199,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         );
         return;
       }
-      
+
       print('✅ Valid checkout state, showing form...');
       // Show check-out form with image capture and note
       final result = await _showCheckOutForm();
@@ -1246,7 +1245,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         : (dateTime.hour > 12 ? dateTime.hour - 12 : dateTime.hour);
     final minute = dateTime.minute.toString().padLeft(2, '0');
     final period = dateTime.hour < 12 ? 'AM' : 'PM';
-    
+
     return '$hour:$minute $period';
   }
 
@@ -1649,7 +1648,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   void _handleReload() async {
     print('🔄 Manual reload triggered...');
-    
+
     // Show loading
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -1668,10 +1667,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
         ),
       );
     }
-    
+
     // Debug attendance data before reload
     await _attendanceService.debugAllRecords();
-    
+
     // Reload all data
     await _loadItineraryCount();
     await _forceReloadData(); // Use robust reload method
@@ -1732,7 +1731,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       ),
     );
   }
-  
+
   Future<void> _showClearDataDialog() async {
     final confirmed = await showDialog<bool>(
       context: context,
@@ -1757,11 +1756,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
     if (confirmed == true) {
       await _clearOldAttendanceData();
-      
+
       // Force reload semua data
       await _loadItineraryCount();
       await _loadProfile();
-      
+
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('✅ Data cleared and state reset'),
@@ -1770,25 +1769,25 @@ class _DashboardScreenState extends State<DashboardScreen> {
       );
     }
   }
-  
+
   // Method untuk force fix check-in state yang bermasalah
   void _handleForceCheckinState() async {
     print('🔧 Force fixing check-in state...');
     await _attendanceService.debugAllRecords();
-    
+
     // Cari semua record hari ini
     final allRecords = await _attendanceService.getAllRecords();
     final today = DateTime.now();
-    
+
     final todayRecords = allRecords
         .where(
           (r) =>
-      r.date.year == today.year &&
-      r.date.month == today.month &&
+              r.date.year == today.year &&
+              r.date.month == today.month &&
               r.date.day == today.day,
         )
         .toList();
-    
+
     if (todayRecords.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -1798,7 +1797,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       );
       return;
     }
-    
+
     // Tampilkan dialog untuk pilih record
     final selectedRecord = await showDialog<AttendanceRecord>(
       context: context,
@@ -1835,18 +1834,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
         ],
       ),
     );
-    
+
     if (selectedRecord != null) {
       // Force set state dengan record yang dipilih
       setState(() {
         todayRecord = selectedRecord;
         isCheckedIn = selectedRecord.isCheckedIn;
       });
-      
+
       print(
         '✅ Manually set state: isCheckedIn=$isCheckedIn, store=${selectedRecord.storeName}',
       );
-      
+
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('✅ State manually set! isCheckedIn: $isCheckedIn'),
@@ -1855,7 +1854,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       );
     }
   }
-  
+
   // Method untuk debug security configuration
   void _handleDebugSecurity() {
     showDialog(
@@ -1941,7 +1940,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       ),
     );
   }
-  
+
   Widget _buildSecurityItem(String label, String value, Color color) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -2045,7 +2044,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                 context: context,
                                 icon: Icons.access_time,
                                 label: 'Attendance',
-                                color: Colors.red,
+                                color: const Color(0xFF29BDCE),
                                 onTap: () {
                                   Navigator.of(context).pop();
                                   Navigator.of(context).push(
@@ -2087,12 +2086,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                 context: context,
                                 icon: Icons.assessment,
                                 label: 'Reports',
-                                color: Colors.green,
+                                color: const Color(0xFF29BDCE),
                                 onTap: () {
                                   Navigator.of(context).pop();
                                   Navigator.of(context).push(
                                     MaterialPageRoute(
-                                      builder: (_) => const SurveyScreen(),
+                                      builder: (_) => const ReportsScreen(),
                                     ),
                                   );
                                 },
@@ -2243,7 +2242,6 @@ class DashboardHome extends StatelessWidget {
   final String? profilePhotoUrl;
   final List<Itinerary>? itineraryList;
   final AttendanceRecord? todayRecord;
-  
 
   const DashboardHome({
     super.key,
@@ -2262,7 +2260,6 @@ class DashboardHome extends StatelessWidget {
     this.profilePhotoUrl,
     this.itineraryList,
     this.todayRecord,
-    
   });
 
   @override
@@ -2273,16 +2270,16 @@ class DashboardHome extends StatelessWidget {
       },
       child: SingleChildScrollView(
         physics: const AlwaysScrollableScrollPhysics(),
-      padding: const EdgeInsets.all(16.0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _buildAccountCard(context),
-          const SizedBox(height: 20),
-          _buildInformationCard(context),
-          const SizedBox(height: 20),
-          _buildRecentActivities(context),
-        ],
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _buildAccountCard(context),
+            const SizedBox(height: 20),
+            _buildInformationCard(context),
+            const SizedBox(height: 20),
+            _buildRecentActivities(context),
+          ],
         ),
       ),
     );
@@ -2608,7 +2605,7 @@ class DashboardHome extends StatelessWidget {
                       context: context,
                       icon: Icons.access_time,
                       label: 'Attendance',
-                      color: Colors.red,
+                      color: const Color(0xFF29BDCE),
                       onTap: () {
                         Navigator.of(context).push(
                           MaterialPageRoute(
@@ -2647,11 +2644,11 @@ class DashboardHome extends StatelessWidget {
                       context: context,
                       icon: Icons.assessment,
                       label: 'Reports',
-                      color: Colors.green,
+                      color: const Color(0xFF29BDCE),
                       onTap: () {
                         Navigator.of(context).push(
                           MaterialPageRoute(
-                            builder: (_) => const SurveyScreen(),
+                            builder: (_) => const ReportsScreen(),
                           ),
                         );
                       },
@@ -2716,15 +2713,15 @@ class DashboardHome extends StatelessWidget {
     print('   - todayRecord.checkOutTime: ${todayRecord?.checkOutTime}');
     print('   - todayRecord.storeName: ${todayRecord?.storeName}');
     print('   - todayRecord.isCheckedIn: ${todayRecord?.isCheckedIn}');
-    
+
     // ✅ Triple check kondisi untuk checkout card
     final shouldShowCheckoutCard =
         todayRecord != null &&
-                                  todayRecord!.checkInTime != null && 
-                                  todayRecord!.checkOutTime == null &&
-                                  todayRecord!.isCheckedIn &&
-                                  isCheckedIn;
-    
+        todayRecord!.checkInTime != null &&
+        todayRecord!.checkOutTime == null &&
+        todayRecord!.isCheckedIn &&
+        isCheckedIn;
+
     if (shouldShowCheckoutCard) {
       print('✅ All conditions met - Showing CHECK-OUT card');
       return _buildCheckedInCard(context);
@@ -2798,14 +2795,14 @@ class DashboardHome extends StatelessWidget {
               ),
               const SizedBox(width: 6),
               Text(() {
-                  if (isCheckedIn && todayRecord?.checkInTime != null) {
-                    final checkInTime = todayRecord!.checkInTime!;
-                    return 'Checked in at ${_formatTime(checkInTime)}';
-                  } else if (itineraryList != null && itineraryList!.isNotEmpty) {
-                    return itineraryList!.first.date;
-                  } else {
-                    return '-';
-                  }
+                if (isCheckedIn && todayRecord?.checkInTime != null) {
+                  final checkInTime = todayRecord!.checkInTime!;
+                  return 'Checked in at ${_formatTime(checkInTime)}';
+                } else if (itineraryList != null && itineraryList!.isNotEmpty) {
+                  return itineraryList!.first.date;
+                } else {
+                  return '-';
+                }
               }(), style: const TextStyle(fontSize: 14, color: Colors.black54)),
             ],
           ),
@@ -2900,13 +2897,13 @@ class DashboardHome extends StatelessWidget {
               children: [
                 Icon(Icons.work, size: 20, color: Colors.green),
                 const SizedBox(width: 8),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Working Time',
-                          style: TextStyle(
-                            fontSize: 12,
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Working Time',
+                      style: TextStyle(
+                        fontSize: 12,
                         color: Colors.green[700],
                         fontWeight: FontWeight.w500,
                       ),
@@ -2916,11 +2913,11 @@ class DashboardHome extends StatelessWidget {
                       attendanceRecord: todayRecord,
                       textStyle: const TextStyle(
                         fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.green,
-                          ),
-                        ),
-                      ],
+                        fontWeight: FontWeight.bold,
+                        color: Colors.green,
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
@@ -2953,7 +2950,7 @@ class DashboardHome extends StatelessWidget {
         : (dateTime.hour > 12 ? dateTime.hour - 12 : dateTime.hour);
     final minute = dateTime.minute.toString().padLeft(2, '0');
     final period = dateTime.hour < 12 ? 'AM' : 'PM';
-    
+
     return '$hour:$minute $period';
   }
 
@@ -2967,9 +2964,7 @@ class DashboardHome extends StatelessWidget {
         ),
         const SizedBox(height: 12),
         // Use unified timeline widget
-        UnifiedTimelineWidget(
-          attendanceRecord: todayRecord,
-        ),
+        UnifiedTimelineWidget(attendanceRecord: todayRecord),
         const SizedBox(height: 16),
         // Keep old activities as backup/additional info
         if (activities.isNotEmpty) ...[
@@ -3015,7 +3010,6 @@ class DashboardHome extends StatelessWidget {
     );
   }
 
-
   Widget _buildTimelineActivityItem({
     required IconData icon,
     required String title,
@@ -3058,9 +3052,9 @@ class DashboardHome extends StatelessWidget {
               ],
             ),
           ),
-          
+
           const SizedBox(width: 16),
-          
+
           // Activity content
           Expanded(
             child: Container(
@@ -3124,7 +3118,7 @@ class _ActivityScreenState extends State<ActivityScreen> {
     'Competitor Activity',
     'Store Audit',
     'Customer Feedback',
-    'Other'
+    'Other',
   ];
 
   // Selected date for filtering
@@ -3149,7 +3143,8 @@ class _ActivityScreenState extends State<ActivityScreen> {
     });
 
     try {
-      final dateStr = '${date.year.toString().padLeft(4, '0')}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+      final dateStr =
+          '${date.year.toString().padLeft(4, '0')}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
       final response = await ItineraryService.getItineraryByDate(dateStr);
 
       setState(() {
@@ -3177,7 +3172,9 @@ class _ActivityScreenState extends State<ActivityScreen> {
       if (todoJson != null) {
         final List<dynamic> todoList = json.decode(todoJson);
         setState(() {
-          todoItems = todoList.map((item) => Map<String, dynamic>.from(item)).toList();
+          todoItems = todoList
+              .map((item) => Map<String, dynamic>.from(item))
+              .toList();
         });
       }
     } catch (e) {
@@ -3233,7 +3230,7 @@ class _ActivityScreenState extends State<ActivityScreen> {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('todo_items');
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('All activities and todos cleared'))
+      const SnackBar(content: Text('All activities and todos cleared')),
     );
   }
 
@@ -3323,16 +3320,15 @@ class _ActivityScreenState extends State<ActivityScreen> {
                 title: Text(
                   '${item['task']} - ${item['storeName']}',
                   style: TextStyle(
-                    decoration: item['completed'] ? TextDecoration.lineThrough : null,
+                    decoration: item['completed']
+                        ? TextDecoration.lineThrough
+                        : null,
                     color: item['completed'] ? Colors.grey : null,
                   ),
                 ),
                 subtitle: Text(
                   'Created: ${_formatTime(createdAt)} | Due: ${_formatTime(time)}',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: Colors.grey[600],
-                  ),
+                  style: TextStyle(fontSize: 12, color: Colors.grey[600]),
                 ),
                 trailing: IconButton(
                   icon: const Icon(Icons.delete, color: Colors.red),
@@ -3371,7 +3367,8 @@ class _ActivityScreenState extends State<ActivityScreen> {
           ),
           IconButton(
             icon: const Icon(Icons.list_alt),
-            onPressed: () => setState(() => showTodoTimeline = !showTodoTimeline),
+            onPressed: () =>
+                setState(() => showTodoTimeline = !showTodoTimeline),
             tooltip: 'Todo Timeline',
           ),
           IconButton(
@@ -3403,7 +3400,11 @@ class _ActivityScreenState extends State<ActivityScreen> {
               ),
               child: Row(
                 children: [
-                  const Icon(Icons.calendar_today, size: 20, color: Colors.blue),
+                  const Icon(
+                    Icons.calendar_today,
+                    size: 20,
+                    color: Colors.blue,
+                  ),
                   const SizedBox(width: 8),
                   Text(
                     'Date: ${selectedDate.year}-${selectedDate.month.toString().padLeft(2, '0')}-${selectedDate.day.toString().padLeft(2, '0')}',
@@ -3422,12 +3423,15 @@ class _ActivityScreenState extends State<ActivityScreen> {
                         value: null,
                         child: Text('All Tasks'),
                       ),
-                      ...taskTypes.map((task) => DropdownMenuItem<String>(
-                        value: task,
-                        child: Text(task),
-                      )),
+                      ...taskTypes.map(
+                        (task) => DropdownMenuItem<String>(
+                          value: task,
+                          child: Text(task),
+                        ),
+                      ),
                     ],
-                    onChanged: (value) => setState(() => selectedTaskType = value),
+                    onChanged: (value) =>
+                        setState(() => selectedTaskType = value),
                   ),
                 ],
               ),
@@ -3468,29 +3472,39 @@ class _ActivityScreenState extends State<ActivityScreen> {
                       ],
                     ),
                     const SizedBox(height: 8),
-                    ...todoItems.take(3).map((item) => Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 4),
-                      child: Row(
-                        children: [
-                          Checkbox(
-                            value: item['completed'],
-                            onChanged: (value) => _toggleTodoItem(item['id']),
-                            materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              '${item['task']} - ${item['storeName']}',
-                              style: TextStyle(
-                                fontSize: 12,
-                                decoration: item['completed'] ? TextDecoration.lineThrough : null,
-                                color: item['completed'] ? Colors.grey : null,
-                              ),
+                    ...todoItems
+                        .take(3)
+                        .map(
+                          (item) => Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 4),
+                            child: Row(
+                              children: [
+                                Checkbox(
+                                  value: item['completed'],
+                                  onChanged: (value) =>
+                                      _toggleTodoItem(item['id']),
+                                  materialTapTargetSize:
+                                      MaterialTapTargetSize.shrinkWrap,
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    '${item['task']} - ${item['storeName']}',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      decoration: item['completed']
+                                          ? TextDecoration.lineThrough
+                                          : null,
+                                      color: item['completed']
+                                          ? Colors.grey
+                                          : null,
+                                    ),
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
-                        ],
-                      ),
-                    )),
+                        ),
                   ],
                 ),
               ),
@@ -3502,19 +3516,19 @@ class _ActivityScreenState extends State<ActivityScreen> {
               child: isLoading
                   ? const Center(child: CircularProgressIndicator())
                   : errorMessage != null
-                      ? _buildErrorState(errorMessage!)
-                      : filteredStores.isEmpty
-                          ? _buildEmptyState()
-            : ListView.builder(
-                              itemCount: filteredStores.length,
-                itemBuilder: (context, i) {
-                                final store = filteredStores[i];
-                                return _buildStoreVisitItem(context, store);
-                              },
-                            ),
+                  ? _buildErrorState(errorMessage!)
+                  : filteredStores.isEmpty
+                  ? _buildEmptyState()
+                  : ListView.builder(
+                      itemCount: filteredStores.length,
+                      itemBuilder: (context, i) {
+                        final store = filteredStores[i];
+                        return _buildStoreVisitItem(context, store);
+                      },
+                    ),
             ),
           ],
-              ),
+        ),
       ),
     );
   }
@@ -3586,10 +3600,10 @@ class _ActivityScreenState extends State<ActivityScreen> {
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
       child: Padding(
-      padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(16),
         child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
             // Store header
             Row(
               children: [
@@ -3603,68 +3617,76 @@ class _ActivityScreenState extends State<ActivityScreen> {
                 ),
                 const SizedBox(width: 12),
                 Expanded(
-            child: Column(
+                  child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
+                    children: [
+                      Text(
                         store.name,
                         style: const TextStyle(
                           fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                      Text(
-                        'Code: ${store.code}',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: Colors.grey[600],
+                          fontWeight: FontWeight.bold,
                         ),
                       ),
-                      if (store.address.isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        'Code: ${store.code}',
+                        style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                      ),
+                      if (store.address?.isNotEmpty == true) ...[
                         const SizedBox(height: 2),
                         Text(
-                          store.address,
+                          store.address!,
                           style: TextStyle(
                             fontSize: 12,
                             color: Colors.grey[600],
                           ),
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
+                    ],
                   ),
-                ],
-              ],
-            ),
                 ),
               ],
-          ),
-          
+            ),
+
             const SizedBox(height: 16),
-          
+
             // Task dropdown and Add Todo button
             Row(
               children: [
-          Expanded(
-            child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-              decoration: BoxDecoration(
+                Expanded(
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 4,
+                    ),
+                    decoration: BoxDecoration(
                       border: Border.all(color: Colors.grey[300]!),
-                borderRadius: BorderRadius.circular(8),
+                      borderRadius: BorderRadius.circular(8),
                     ),
                     child: DropdownButton<String>(
                       value: selectedTaskType,
                       hint: const Text('Select Task'),
                       isExpanded: true,
                       underline: const SizedBox(),
-                      items: taskTypes.map((task) => DropdownMenuItem<String>(
-                        value: task,
-                        child: Text(task),
-                      )).toList(),
+                      items: taskTypes
+                          .map(
+                            (task) => DropdownMenuItem<String>(
+                              value: task,
+                              child: Text(task),
+                            ),
+                          )
+                          .toList(),
                       onChanged: (value) {
                         if (value != null) {
                           _addTodoItem(value, store.name, DateTime.now());
                           ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text('Added "${value}" task for ${store.name}'))
+                            SnackBar(
+                              content: Text(
+                                'Added "${value}" task for ${store.name}',
+                              ),
+                            ),
                           );
                         }
                       },
@@ -3673,17 +3695,21 @@ class _ActivityScreenState extends State<ActivityScreen> {
                 ),
                 const SizedBox(width: 8),
                 ElevatedButton.icon(
-                  onPressed: () => _addTodoItem('Check In', store.name, DateTime.now()),
+                  onPressed: () =>
+                      _addTodoItem('Check In', store.name, DateTime.now()),
                   icon: const Icon(Icons.add, size: 16),
                   label: const Text('Check In'),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.green,
                     foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                          ),
-                        ),
-                    ],
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 8,
+                    ),
                   ),
+                ),
+              ],
+            ),
 
             const SizedBox(height: 12),
 
@@ -3691,7 +3717,8 @@ class _ActivityScreenState extends State<ActivityScreen> {
             SizedBox(
               width: double.infinity,
               child: OutlinedButton.icon(
-                onPressed: () => _addTodoItem('Check Out', store.name, DateTime.now()),
+                onPressed: () =>
+                    _addTodoItem('Check Out', store.name, DateTime.now()),
                 icon: const Icon(Icons.logout, size: 16),
                 label: const Text('Check Out'),
                 style: OutlinedButton.styleFrom(
@@ -3702,49 +3729,51 @@ class _ActivityScreenState extends State<ActivityScreen> {
             ),
 
             // Show pending todos for this store
-            ..._getPendingTodosForStore(store.name).map((todo) => Padding(
-              padding: const EdgeInsets.only(top: 8),
-              child: Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: Colors.orange.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(6),
-                  border: Border.all(color: Colors.orange.withOpacity(0.3)),
-                ),
-                child: Row(
-                  children: [
-                    const Icon(Icons.pending, size: 16, color: Colors.orange),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        todo['task'],
-                        style: const TextStyle(
-                          fontSize: 12,
-                          color: Colors.orange,
-                          fontWeight: FontWeight.w500,
+            ..._getPendingTodosForStore(store.name).map(
+              (todo) => Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.orange.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(color: Colors.orange.withOpacity(0.3)),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.pending, size: 16, color: Colors.orange),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          todo['task'],
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: Colors.orange,
+                            fontWeight: FontWeight.w500,
+                          ),
                         ),
                       ),
-                    ),
-                  Text(
-                      _formatTime(DateTime.parse(todo['time'])),
-                      style: const TextStyle(
-                        fontSize: 10,
-                        color: Colors.grey,
-                    ),
+                      Text(
+                        _formatTime(DateTime.parse(todo['time'])),
+                        style: const TextStyle(
+                          fontSize: 10,
+                          color: Colors.grey,
+                        ),
+                      ),
+                    ],
                   ),
-                ],
+                ),
               ),
             ),
-            )),
-        ],
+          ],
         ),
       ),
     );
   }
 
   List<Map<String, dynamic>> _getPendingTodosForStore(String storeName) {
-    return todoItems.where((todo) =>
-      !todo['completed'] && todo['storeName'] == storeName
-    ).toList();
+    return todoItems
+        .where((todo) => !todo['completed'] && todo['storeName'] == storeName)
+        .toList();
   }
 }

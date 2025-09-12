@@ -305,7 +305,7 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
                     const SizedBox(width: 4),
                     Expanded(
                       child: Text(
-                        store.address,
+                        store.address ?? '',
                         style: const TextStyle(
                           fontSize: 11,
                           color: Colors.grey,

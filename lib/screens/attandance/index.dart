@@ -5,6 +5,8 @@ import 'package:stockira/services/attendance_service.dart';
 import 'package:stockira/services/itinerary_service.dart';
 import 'package:stockira/models/attendance_record.dart';
 import 'package:stockira/widgets/attendance_list_widget.dart';
+import 'package:stockira/widgets/cute_loading_widget.dart';
+import 'package:stockira/screens/attendance/attendance_maps_screen.dart';
 
 class AttendanceScreen extends StatefulWidget {
   const AttendanceScreen({super.key});
@@ -42,13 +44,17 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
   // Statistics
   Map<String, dynamic> statistics = {};
   bool isLoading = false;
+  bool isCalendarLoading = false;
+  
+  // Calendar data cache - key: "YYYY-MM", value: List<AttendanceRecord>
+  Map<String, List<AttendanceRecord>> calendarDataCache = {};
 
   @override
   void initState() {
     super.initState();
     _setPeriod(selectedDate);
     _loadAttendanceData();
-    _loadAttendanceRecords();
+    // Calendar data will be loaded by _setPeriod method
   }
 
   Future<void> _loadAttendanceData() async {
@@ -67,36 +73,44 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
     _refreshKpi();
   }
 
-  Future<void> _loadAttendanceRecords() async {
+
+  // Efficient method to load calendar data for a specific month
+  Future<void> _loadCalendarDataForMonth(DateTime month) async {
+    final monthKey = '${month.year}-${month.month.toString().padLeft(2, '0')}';
+    
+    // Check if data is already cached
+    if (calendarDataCache.containsKey(monthKey)) {
+      setState(() {
+        attendanceRecords = calendarDataCache[monthKey]!;
+        isCalendarLoading = false;
+      });
+      return;
+    }
+
+    // Set loading state
     setState(() {
-      isLoading = true;
+      isCalendarLoading = true;
     });
 
     try {
-      final records = await _attendanceService.getRecordsByDateRange(
-        firstDayOfMonth,
-        lastDayOfMonth,
-      );
-      final stats = await _attendanceService.getStatistics(
-        startDate: firstDayOfMonth,
-        endDate: lastDayOfMonth,
-      );
+      // Load data for the entire month using parallel API calls
+      final records = await _attendanceService.getAttendanceRecordsForMonth(month);
 
       // Load itinerary data for the entire month to build store code/address maps
       await _loadItineraryDataForMonth(records);
 
+      // Cache the data
+      calendarDataCache[monthKey] = records;
+      
       setState(() {
         attendanceRecords = records;
-        statistics = stats;
-        isLoading = false;
+        isCalendarLoading = false;
       });
     } catch (e) {
+      print('Error loading calendar data: $e');
       setState(() {
-        isLoading = false;
+        isCalendarLoading = false;
       });
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error loading attendance data: $e')),
-      );
     }
   }
 
@@ -112,28 +126,43 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
         uniqueDates.add(DateTime(record.date.year, record.date.month, record.date.day));
       }
 
+      print('📅 Found attendance records for ${uniqueDates.length} dates: ${uniqueDates.map((d) => '${d.day}').join(', ')}');
+
       // If no attendance records, load today's itinerary as fallback
       if (uniqueDates.isEmpty) {
         uniqueDates.add(DateTime.now());
+        print('⚠️ No attendance records found, loading today\'s itinerary as fallback');
       }
 
-      // Fetch itinerary for each unique date
-      for (final date in uniqueDates) {
+      // Fetch itinerary for each unique date in parallel for better performance
+      final List<Future<void>> itineraryFutures = uniqueDates.map((date) async {
         final dateStr = '${date.year.toString().padLeft(4, '0')}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
-        final itineraryResp = await ItineraryService.getItineraryByDate(dateStr);
+        print('🔍 Loading itinerary for date: $dateStr');
+        
+        try {
+          final itineraryResp = await ItineraryService.getItineraryByDate(dateStr);
 
-        if (itineraryResp.success) {
-          for (final itin in itineraryResp.data) {
-            for (final store in itin.stores) {
-              // Only add if not already present (prioritize first occurrence)
-              if (!codeMap.containsKey(store.id)) {
-                codeMap[store.id] = store.code ?? '';
-                addrMap[store.id] = store.address ?? '';
+          if (itineraryResp.success) {
+            for (final itin in itineraryResp.data) {
+              for (final store in itin.stores) {
+                // Only add if not already present (prioritize first occurrence)
+                if (!codeMap.containsKey(store.id)) {
+                  codeMap[store.id] = store.code;
+                  addrMap[store.id] = store.address ?? '';
+                }
               }
             }
+            print('✅ Loaded itinerary for $dateStr: ${itineraryResp.data.length} itineraries');
+          } else {
+            print('❌ Failed to load itinerary for $dateStr: ${itineraryResp.message}');
           }
+        } catch (e) {
+          print('❌ Error loading itinerary for $dateStr: $e');
         }
-      }
+      }).toList();
+
+      // Wait for all itinerary requests to complete
+      await Future.wait(itineraryFutures);
 
       setState(() {
         storeCodeMap = codeMap;
@@ -153,7 +182,8 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
     lastDayOfMonth = DateTime(date.year, date.month + 1, 0);
     totalHari = lastDayOfMonth.day;
     _refreshKpi();
-    _loadAttendanceRecords(); // Reload records for new period
+    // Load calendar data for new month (only if not already cached)
+    _loadCalendarDataForMonth(date);
     setState(() {});
   }
 
@@ -195,47 +225,23 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
   void _onCalendarDayTap(DateTime day) async {
     setState(() {
       selectedDate = day;
-      isLoading = true;
     });
 
-    try {
-      // Fetch attendance data for the selected day
-      final records = await _attendanceService.getAttendanceRecordsForDate(day);
-
-      // Fetch itinerary for store code/address mapping
-      final dateStr = '${day.year.toString().padLeft(4, '0')}-${day.month.toString().padLeft(2, '0')}-${day.day.toString().padLeft(2, '0')}';
-      final itineraryResp = await ItineraryService.getItineraryByDate(dateStr);
-
-      final Map<int, String> codeMap = {};
-      final Map<int, String> addrMap = {};
-      if (itineraryResp.success) {
-        for (final itin in itineraryResp.data) {
-          for (final store in itin.stores) {
-            codeMap[store.id] = store.code ?? '';
-            addrMap[store.id] = store.address ?? '';
-          }
-        }
-      }
-
-      setState(() {
-        attendanceRecords = records;
-        storeCodeMap = codeMap;
-        storeAddressMap = addrMap;
-        isLoading = false;
-      });
-    } catch (e) {
-      setState(() {
-        isLoading = false;
-      });
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error loading attendance details: $e')),
-      );
-    }
+    // Data sudah ada di cache, tidak perlu API call lagi
+    // Hanya update selectedDate untuk menampilkan detail yang sesuai
   }
 
 
-  String _formatDate(DateTime date) {
-    return '${date.day}/${date.month}/${date.year}';
+
+  Widget _buildCuteLoadingIndicator() {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      child: CuteLoadingWidget(
+        message: 'Loading attendance data...',
+        size: 80,
+        primaryColor: const Color(0xFF29BDCE),
+      ),
+    );
   }
 
   Widget _buildCalendarDayLabel(String label, double daySize, double fontSize) {
@@ -259,13 +265,20 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
 
 
   Widget _buildCalendar() {
+    if (isCalendarLoading) {
+      return Container(
+        height: 300,
+        child: _buildCuteLoadingIndicator(),
+      );
+    }
+    
     return LayoutBuilder(
       builder: (context, constraints) {
         final screenWidth = constraints.maxWidth;
         final isLargeScreen = screenWidth > 400;
-        final daySize = isLargeScreen ? 44.0 : 40.0;
-        final fontSize = isLargeScreen ? 14.0 : 12.0;
-        final smallFontSize = isLargeScreen ? 10.0 : 8.0;
+        final daySize = isLargeScreen ? 50.0 : 45.0;
+        final fontSize = isLargeScreen ? 16.0 : 14.0;
+        final smallFontSize = isLargeScreen ? 12.0 : 10.0;
 
         // Calendar for current month
         List<Widget> rows = [];
@@ -293,19 +306,45 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
       // Find attendance record for this day from API data
       Color dayColor = Colors.grey.shade200; // Default: no activity (grey)
       bool isPresent = false;
+      int attendanceCount = 0;
 
-      final record = attendanceRecords.firstWhere(
+      // Find all records for this specific day
+      final dayRecords = attendanceRecords.where(
         (r) =>
             r.date.year == thisDay.year &&
             r.date.month == thisDay.month &&
             r.date.day == thisDay.day,
-        orElse: () => AttendanceRecord(id: 0, date: thisDay),
-      );
+      ).toList();
 
-      if (record.id != 0) {
-        // Green: Has total masuk (attendance records)
-        dayColor = Colors.green.shade100;
-        isPresent = true;
+      if (dayRecords.isNotEmpty) {
+        // Sum up all details from all records for this day
+        final allDetails = dayRecords.expand((r) => r.details).toList();
+        attendanceCount = allDetails.length;
+        
+        // Determine color based on attendance status
+        if (attendanceCount > 0) {
+          // Check if all details are approved (is_approved = true)
+          bool allApproved = allDetails.every((detail) => detail.isApproved);
+          bool hasApproved = allDetails.any((detail) => detail.isApproved);
+          bool hasPending = allDetails.any((detail) => !detail.isApproved);
+          
+          if (allApproved) {
+            // Green: All present and approved
+            dayColor = Colors.green.shade100;
+            isPresent = true;
+          } else if (hasApproved && hasPending) {
+            // Orange: Mixed approved and pending
+            dayColor = Colors.orange.shade200;
+            isPresent = true;
+          } else if (hasPending) {
+            // Yellow: Present but pending approval (is_approved = false)
+            dayColor = Colors.yellow.shade200;
+            isPresent = true;
+          }
+        } else {
+          // Red: Absent (no details but has record)
+          dayColor = Colors.red.shade100;
+        }
       } else {
         // Grey: No attendance recorded for this date
         dayColor = Colors.grey.shade200;
@@ -320,7 +359,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
               color: isToday
                   ? Colors.cyan
                   : isSelected
-                  ? Colors.red.shade100
+                  ? Colors.purple.shade100
                   : dayColor,
               shape: BoxShape.circle,
               border: isPresent
@@ -342,7 +381,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
                         color: isToday
                             ? Colors.white
                             : isSelected
-                            ? Colors.red
+                            ? Colors.purple[800]
                             : isPresent
                             ? Colors.green[900]
                             : Colors.black87,
@@ -352,25 +391,53 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
                         fontSize: fontSize,
                       ),
                     ),
-                    // Show store count for present days with better responsive design
-                    if (isPresent && record.details.isNotEmpty)
+                    // Show dots for attendance status like in the image
+                    if (attendanceCount > 0)
                       Container(
-                        margin: const EdgeInsets.only(top: 1),
-                        padding: EdgeInsets.symmetric(
-                          horizontal: isLargeScreen ? 3 : 2,
-                          vertical: isLargeScreen ? 2 : 1,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.green.withOpacity(0.2),
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                        child: Text(
-                          '${record.details.length}',
-                          style: TextStyle(
-                            color: Colors.green[900],
-                            fontSize: smallFontSize,
-                            fontWeight: FontWeight.bold,
-                          ),
+                        margin: const EdgeInsets.only(top: 2),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            // Main attendance dot
+                            Container(
+                              width: 6,
+                              height: 6,
+                              decoration: BoxDecoration(
+                                color: dayColor == Colors.green.shade100 
+                                    ? Colors.green[600]
+                                    : dayColor == Colors.yellow.shade200
+                                        ? Colors.orange[600]
+                                        : dayColor == Colors.orange.shade200
+                                            ? Colors.orange[700]
+                                            : Colors.red[600],
+                                shape: BoxShape.circle,
+                              ),
+                            ),
+                            // Unique store dot (if more than 1 store)
+                            if (dayRecords.isNotEmpty) ...[
+                              Builder(
+                                builder: (context) {
+                                  final uniqueStores = dayRecords
+                                      .expand((r) => r.details)
+                                      .map((d) => d.storeId)
+                                      .toSet()
+                                      .length;
+                                  if (uniqueStores > 1) {
+                                    return Container(
+                                      margin: const EdgeInsets.only(left: 2),
+                                      width: 6,
+                                      height: 6,
+                                      decoration: BoxDecoration(
+                                        color: Colors.blue[600],
+                                        shape: BoxShape.circle,
+                                      ),
+                                    );
+                                  }
+                                  return const SizedBox.shrink();
+                                },
+                              ),
+                            ],
+                          ],
                         ),
                       ),
                   ],
@@ -397,49 +464,68 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
       );
     }
 
-    return Column(
-      children: [
-        Padding(
-          padding: const EdgeInsets.symmetric(vertical: 8),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              IconButton(
-                icon: const Icon(Icons.chevron_left),
-                onPressed: () {
-                  setState(() {
-                    selectedDate = DateTime(
-                      selectedDate.year,
-                      selectedDate.month - 1,
-                      1,
-                    );
-                    _setPeriod(selectedDate);
-                  });
-                },
+        return Column(
+          children: [
+            // Month Navigation Header
+            Container(
+              padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+              decoration: BoxDecoration(
+                color: Colors.grey[50],
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.grey[200]!),
               ),
-              Text(
-                "${_monthName(selectedDate.month)} ${selectedDate.year}",
-                style: TextStyle(
-                  fontSize: isLargeScreen ? 18 : 16,
-                  fontWeight: FontWeight.bold,
-                ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.chevron_left, size: 28),
+                    onPressed: () {
+                      setState(() {
+                        selectedDate = DateTime(
+                          selectedDate.year,
+                          selectedDate.month - 1,
+                          1,
+                        );
+                        _setPeriod(selectedDate);
+                      });
+                    },
+                  ),
+                  Column(
+                    children: [
+                      Text(
+                        "${_monthName(selectedDate.month)} ${selectedDate.year}",
+                        style: TextStyle(
+                          fontSize: isLargeScreen ? 20 : 18,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.grey[800],
+                        ),
+                      ),
+                      Text(
+                        "${_getDayName(selectedDate.weekday)}",
+                        style: TextStyle(
+                          fontSize: isLargeScreen ? 14 : 12,
+                          color: Colors.grey[600],
+                        ),
+                      ),
+                    ],
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.chevron_right, size: 28),
+                    onPressed: () {
+                      setState(() {
+                        selectedDate = DateTime(
+                          selectedDate.year,
+                          selectedDate.month + 1,
+                          1,
+                        );
+                        _setPeriod(selectedDate);
+                      });
+                    },
+                  ),
+                ],
               ),
-              IconButton(
-                icon: const Icon(Icons.chevron_right),
-                onPressed: () {
-                  setState(() {
-                    selectedDate = DateTime(
-                      selectedDate.year,
-                      selectedDate.month + 1,
-                      1,
-                    );
-                    _setPeriod(selectedDate);
-                  });
-                },
-              ),
-            ],
-          ),
-        ),
+            ),
+            const SizedBox(height: 16),
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceEvenly,
           children: [
@@ -476,6 +562,19 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
       'December',
     ];
     return months[month - 1];
+  }
+
+  String _getDayName(int weekday) {
+    const days = [
+      'Sunday',
+      'Monday', 
+      'Tuesday',
+      'Wednesday',
+      'Thursday',
+      'Friday',
+      'Saturday',
+    ];
+    return days[weekday % 7];
   }
 
   @override
@@ -517,7 +616,11 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh),
-            onPressed: () => _loadAttendanceRecords(),
+            onPressed: () {
+              // Clear cache and reload data
+              calendarDataCache.clear();
+              _loadCalendarDataForMonth(selectedDate);
+            },
             tooltip: 'Refresh Data',
           ),
         ],
@@ -527,7 +630,11 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // Calendar
+            // 1. Period Statistics at the top
+            _buildMonthlyStatisticsCard(),
+            const SizedBox(height: 24),
+            
+            // 2. Calendar in the middle
             Card(
               elevation: 2,
               shape: RoundedRectangleBorder(
@@ -549,24 +656,92 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
                       alignment: WrapAlignment.center,
                       children: [
                         _buildLegendItem(
-                          color: Colors.yellow.shade200,
-                          borderColor: Colors.yellow,
-                          label: 'Pending/Approved',
-                        ),
-                        _buildLegendItem(
                           color: Colors.green.shade100,
                           borderColor: Colors.green,
-                          label: 'Present',
+                          label: 'Present (Approved)',
                         ),
                         _buildLegendItem(
-                          color: Colors.grey.shade200,
-                          borderColor: null,
-                          label: 'No Activity',
+                          color: Colors.yellow.shade200,
+                          borderColor: Colors.orange,
+                          label: 'Present (Pending)',
                         ),
                         _buildLegendItem(
                           color: Colors.red.shade100,
                           borderColor: Colors.red,
                           label: 'Absent',
+                        ),
+                        _buildLegendItem(
+                          color: Colors.grey.shade200,
+                          borderColor: null,
+                          label: 'No Data',
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    // Additional legend for dots
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: Colors.green.withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(4),
+                            border: Border.all(color: Colors.green.withOpacity(0.3)),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Container(
+                                width: 6,
+                                height: 6,
+                                decoration: BoxDecoration(
+                                  color: Colors.green[600],
+                                  shape: BoxShape.circle,
+                                ),
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                'Attendance',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.green[800],
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: Colors.blue.withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(4),
+                            border: Border.all(color: Colors.blue.withOpacity(0.3)),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Container(
+                                width: 6,
+                                height: 6,
+                                decoration: BoxDecoration(
+                                  color: Colors.blue[600],
+                                  shape: BoxShape.circle,
+                                ),
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                'Multiple Stores',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.blue[800],
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                       ],
                     ),
@@ -575,16 +750,9 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
               ),
             ),
             const SizedBox(height: 24),
-            // Results and Statistics Section
+            
+            // 3. Working Hours, Progress, Duration and List at the bottom
             _buildResultsSection(),
-            const SizedBox(height: 24),
-            // Info
-            Center(
-              child: Text(
-                'Periode: ${firstDayOfMonth.day}/${firstDayOfMonth.month}/${firstDayOfMonth.year} - ${lastDayOfMonth.day}/${lastDayOfMonth.month}/${lastDayOfMonth.year}',
-                style: const TextStyle(fontSize: 14, color: Colors.black54),
-              ),
-            ),
           ],
         ),
       ),
@@ -593,13 +761,35 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
 
   Widget _buildResultsSection() {
     if (isLoading) {
-      return const Card(
-        child: Padding(
-          padding: EdgeInsets.all(16.0),
-          child: Center(child: CircularProgressIndicator()),
-        ),
+      return Card(
+        elevation: 2,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        child: _buildCuteLoadingIndicator(),
       );
     }
+
+    // Get records for selected date
+    final selectedDateRecords = attendanceRecords.where((record) {
+      return record.date.day == selectedDate.day &&
+             record.date.month == selectedDate.month && 
+             record.date.year == selectedDate.year;
+    }).toList();
+
+    // Calculate working hours, progress, and duration for selected date
+    final allDetails = selectedDateRecords.expand((r) => r.details).toList();
+    
+    // Progress calculation: is_approved = 1 for completed, 0 for in progress
+    final completedDetails = allDetails.where((d) => d.isApproved == true).toList();
+    
+    final totalWorkingMinutes = allDetails
+        .where((d) => d.checkOutTime != null)
+        .map((d) => _calculateDetailDuration(d))
+        .fold(0, (sum, duration) => sum + duration);
+
+    final workingHours = totalWorkingMinutes / 60;
+    final progress = completedDetails.length;
+    final totalDetails = allDetails.length;
+    final duration = totalWorkingMinutes;
 
     return Card(
       elevation: 2,
@@ -609,198 +799,215 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // Header with selected date
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text(
-                  'Attendance Details',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.red,
-                  ),
-                ),
                 Text(
-                  _formatDate(selectedDate),
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: Colors.grey[600],
-                    fontWeight: FontWeight.w500,
+                  '${selectedDate.day} ${_monthName(selectedDate.month)} ${selectedDate.year}',
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.black87,
                   ),
                 ),
               ],
             ),
             const SizedBox(height: 16),
 
-            // Statistics for selected date/period
-            _buildSelectedDateStatistics(),
+            // Map view button
+            GestureDetector(
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => AttendanceMapsScreen(
+                      attendanceRecords: attendanceRecords,
+                      selectedDate: selectedDate,
+                      storeCodeMap: storeCodeMap,
+                      storeAddressMap: storeAddressMap,
+                    ),
+                  ),
+                );
+              },
+              child: Container(
+                height: 200,
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      const Color(0xFF29BDCE).withOpacity(0.1),
+                      const Color(0xFF1E9BA8).withOpacity(0.1),
+                    ],
+                  ),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(
+                    color: const Color(0xFF29BDCE).withOpacity(0.3),
+                    width: 1,
+                  ),
+                ),
+                child: Stack(
+                  children: [
+                    // Map preview background
+                    Container(
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(16),
+                        color: Colors.grey[100],
+                      ),
+                      child: Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(16),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF29BDCE).withOpacity(0.1),
+                                borderRadius: BorderRadius.circular(20),
+                              ),
+                              child: const Icon(
+                                Icons.map,
+                                size: 48,
+                                color: Color(0xFF29BDCE),
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            const Text(
+                              'View on Map',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w600,
+                                color: Color(0xFF29BDCE),
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              'Tap to see all stores on map',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.grey[600],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    // Tap overlay
+                    Positioned.fill(
+                      child: Container(
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(16),
+                          color: Colors.transparent,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
             
             const SizedBox(height: 16),
 
-            // Attendance Details for selected date
-            AttendanceListWidget(
-              attendanceRecords: attendanceRecords,
-              selectedDate: selectedDate,
-              storeCodeMap: storeCodeMap,
-              storeAddressMap: storeAddressMap,
+            // Working Hours, Progress, Duration summary
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.grey[50],
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.grey[200]!),
+              ),
+              child: Column(
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceAround,
+                    children: [
+                      _buildSummaryItem(
+                        'Working Hour',
+                        workingHours > 0 ? '${workingHours.toStringAsFixed(1)}h' : '-',
+                        Icons.access_time,
+                        Colors.blue,
+                      ),
+                      _buildSummaryItem(
+                        'Progress',
+                        '($progress/$totalDetails)',
+                        Icons.trending_up,
+                        Colors.green,
+                      ),
+                      _buildSummaryItem(
+                        'Duration',
+                        duration > 0 ? '${(duration / 60).floor()}h ${duration % 60}m' : '0m',
+                        Icons.timer,
+                        Colors.orange,
+                      ),
+                    ],
+                  ),
+                ],
+              ),
             ),
+            
+            const SizedBox(height: 16),
+
+            // Attendance Details List for selected date
+            if (selectedDateRecords.isNotEmpty)
+              AttendanceListWidget(
+                attendanceRecords: selectedDateRecords,
+                selectedDate: selectedDate,
+                storeCodeMap: storeCodeMap,
+                storeAddressMap: storeAddressMap,
+              )
+            else
+              Container(
+                padding: const EdgeInsets.all(32),
+                child: const Center(
+                  child: Column(
+                    children: [
+                      Icon(
+                        Icons.event_busy,
+                        size: 48,
+                        color: Colors.grey,
+                      ),
+                      SizedBox(height: 16),
+                      Text(
+                        'No attendance data for this date',
+                        style: TextStyle(
+                          fontSize: 16,
+                          color: Colors.grey,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildSelectedDateStatistics() {
-    // Calculate statistics for selected date or current period
-    final recordsForPeriod = attendanceRecords.where((record) {
-      if (selectedDate.day == DateTime.now().day && 
-          selectedDate.month == DateTime.now().month && 
-          selectedDate.year == DateTime.now().year) {
-        // If today is selected, show monthly statistics
-        return record.date.month == selectedDate.month && 
-               record.date.year == selectedDate.year;
-      } else {
-        // If specific date selected, show that date only
-        return record.date.day == selectedDate.day &&
-               record.date.month == selectedDate.month && 
-               record.date.year == selectedDate.year;
-      }
-    }).toList();
-
-    final totalMasuk = recordsForPeriod.length;
-    final uniqueStores = recordsForPeriod
-        .expand((r) => r.details)
-        .map((d) => d.storeId)
-        .toSet()
-        .length;
-    
-    final noOutCount = recordsForPeriod
-        .expand((r) => r.details)
-        .where((d) => d.checkOutTime == null)
-        .length;
-    
-    final lessThan5MinCount = recordsForPeriod
-        .expand((r) => r.details)
-        .where((d) {
-          if (d.checkOutTime == null) return false;
-          final duration = _calculateDetailDuration(d);
-          return duration < 5;
-        })
-        .length;
-
-    final totalWorkingMinutes = recordsForPeriod
-        .expand((r) => r.details)
-        .where((d) => d.checkOutTime != null)
-        .map((d) => _calculateDetailDuration(d))
-        .fold(0, (sum, duration) => sum + duration);
-
-    final averageDaily = recordsForPeriod.isNotEmpty 
-        ? totalWorkingMinutes ~/ recordsForPeriod.length 
-        : 0;
-
-    final completionRate = recordsForPeriod.isNotEmpty
-        ? (recordsForPeriod.where((r) => r.details.any((d) => d.checkOutTime != null)).length / recordsForPeriod.length * 100).round()
-        : 0;
-
+  Widget _buildSummaryItem(String title, String value, IconData icon, Color color) {
     return Column(
       children: [
-        // First row statistics
-        Row(
-          children: [
-            Expanded(
-              child: _buildStatCard(
-                'Total Masuk',
-                '$totalMasuk',
-                Icons.login,
-                Colors.green,
-              ),
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: _buildStatCard(
-                'Unique Store',
-                '$uniqueStores',
-                Icons.store,
-                Colors.blue,
-              ),
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: _buildStatCard(
-                'No Out',
-                '$noOutCount',
-                Icons.logout,
-                Colors.orange,
-              ),
-            ),
-          ],
-        ),
+        Icon(icon, color: color, size: 24),
         const SizedBox(height: 8),
-        
-        // Second row statistics
-        Row(
-          children: [
-            Expanded(
-              child: _buildStatCard(
-                '<5 Menit',
-                '$lessThan5MinCount',
-                Icons.timer,
-                Colors.red,
-              ),
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: _buildStatCard(
-                'Working Hours',
-                '${(totalWorkingMinutes / 60).toStringAsFixed(1)}h',
-                Icons.access_time,
-                Colors.purple,
-              ),
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: _buildStatCard(
-                'Avg Daily',
-                '${(averageDaily / 60).toStringAsFixed(1)}h',
-                Icons.trending_up,
-                Colors.teal,
-              ),
-            ),
-          ],
+        Text(
+          value,
+          style: TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
+            color: color,
+          ),
         ),
-        const SizedBox(height: 12),
-        
-        // Progress bar for completion rate
-        Row(
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Completion Rate: $completionRate%',
-                    style: const TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  LinearProgressIndicator(
-                    value: completionRate / 100,
-                    backgroundColor: Colors.grey[300],
-                    valueColor: AlwaysStoppedAnimation<Color>(
-                      completionRate >= 80 ? Colors.green : 
-                      completionRate >= 60 ? Colors.orange : Colors.red,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
+        Text(
+          title,
+          style: const TextStyle(
+            fontSize: 12,
+            color: Colors.black54,
+          ),
         ),
       ],
     );
   }
+
 
   int _calculateDetailDuration(AttendanceDetail detail) {
     if (detail.checkOutTime == null) return 0;
@@ -811,14 +1018,183 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
     return checkOutMinutes - checkInMinutes;
   }
 
-  Widget _buildStatCard(
-    String title,
-    String value,
-    IconData icon,
-    Color color,
-  ) {
+
+  Widget _buildMonthlyStatisticsCard() {
+    // Calculate monthly statistics
+    final monthlyRecords = attendanceRecords.where((record) {
+      return record.date.month == selectedDate.month && 
+             record.date.year == selectedDate.year;
+    }).toList();
+
+    
+    // Get all details from monthly records
+    final allDetails = monthlyRecords.expand((r) => r.details).toList();
+    
+    // Progress calculation: is_approved = 1 for completed, 0 for in progress
+    final completedDetails = allDetails.where((d) => d.isApproved == true).toList();
+    
+    // Plan = total stores to visit (all details), Actual = completed stores
+    final plan = allDetails.length;
+    final actual = completedDetails.length;
+    
+    // Unique stores = unique store IDs visited
+    final uniqueStores = allDetails.map((d) => d.storeId).toSet().length;
+    
+    // No out count = details without checkout time
+    final noOutCount = allDetails.where((d) => d.checkOutTime == null).length;
+    
+    // Less than 5 minutes count
+    final lessThan5MinCount = allDetails.where((d) {
+      if (d.checkOutTime == null) return false;
+      final duration = _calculateDetailDuration(d);
+      return duration < 5;
+    }).length;
+
+    // Working hours = total duration from all details
+    final totalWorkingMinutes = allDetails
+        .where((d) => d.checkOutTime != null)
+        .map((d) => _calculateDetailDuration(d))
+        .fold(0, (sum, duration) => sum + duration);
+    
+    final workingHours = totalWorkingMinutes / 60;
+    
+    // Achievement = percentage of completed vs planned
+    final achievement = plan > 0 ? (actual / plan * 100).round() : 0;
+
+    return Card(
+      elevation: 2,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Period Header
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'Periode: ${firstDayOfMonth.day.toString().padLeft(2, '0')} ${_monthName(firstDayOfMonth.month).substring(0, 3)} ${firstDayOfMonth.year} s/d ${lastDayOfMonth.day.toString().padLeft(2, '0')} ${_monthName(lastDayOfMonth.month).substring(0, 3)} ${lastDayOfMonth.year}',
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.black87,
+                  ),
+                ),
+                // Progress indicator
+                Container(
+                  width: 60,
+                  height: 60,
+                  child: Stack(
+                    children: [
+                      CircularProgressIndicator(
+                        value: achievement / 100,
+                        strokeWidth: 6,
+                        backgroundColor: Colors.grey[300],
+                        valueColor: AlwaysStoppedAnimation<Color>(
+                          achievement >= 80 ? Colors.green : 
+                          achievement >= 60 ? Colors.orange : Colors.red,
+                        ),
+                      ),
+                      Center(
+                        child: Text(
+                          '$achievement%',
+                          style: const TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            
+            // KPI Row 1
+            Row(
+              children: [
+                Expanded(
+                  child: _buildKPIItem(
+                    'Progress',
+                    '$actual/$plan',
+                    Colors.green,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: _buildKPIItem(
+                    'Plan',
+                    '$plan',
+                    Colors.blue,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: _buildKPIItem(
+                    'Actual',
+                    '$actual',
+                    Colors.orange,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: _buildKPIItem(
+                    'Ach',
+                    '${achievement.toStringAsFixed(0)}%',
+                    Colors.purple,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            
+            // KPI Row 2
+            Row(
+              children: [
+                Expanded(
+                  child: _buildKPIItem(
+                    'Unique Store',
+                    '$uniqueStores',
+                    Colors.teal,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: _buildKPIItem(
+                    'No Out',
+                    '$noOutCount',
+                    Colors.red,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: _buildKPIItem(
+                    '<5 Menit',
+                    '$lessThan5MinCount',
+                    Colors.amber,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: _buildKPIItem(
+                    'Working Hours',
+                    '${workingHours.toStringAsFixed(1)}h',
+                    Colors.indigo,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildKPIItem(String title, String value, Color color) {
     return Container(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(8),
       decoration: BoxDecoration(
         color: color.withOpacity(0.1),
         borderRadius: BorderRadius.circular(8),
@@ -826,19 +1202,22 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
       ),
       child: Column(
         children: [
-          Icon(icon, color: color, size: 20),
-          const SizedBox(height: 4),
           Text(
             value,
             style: TextStyle(
-              fontSize: 16,
+              fontSize: 12,
               fontWeight: FontWeight.bold,
               color: color,
             ),
+            textAlign: TextAlign.center,
           ),
+          const SizedBox(height: 2),
           Text(
             title,
-            style: const TextStyle(fontSize: 10, color: Colors.black54),
+            style: const TextStyle(
+              fontSize: 9,
+              color: Colors.black54,
+            ),
             textAlign: TextAlign.center,
           ),
         ],

@@ -136,8 +136,8 @@ class _MapsCheckinSimpleScreenState extends State<MapsCheckinSimpleScreen> {
           Marker(
             markerId: MarkerId('store_${_selectedStore!.id}'),
             position: LatLng(
-              double.parse(_selectedStore!.latitude),
-              double.parse(_selectedStore!.longitude),
+              double.parse(_selectedStore!.latitude ?? '0'),
+              double.parse(_selectedStore!.longitude ?? '0'),
             ),
             icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed),
           ),
@@ -158,8 +158,8 @@ class _MapsCheckinSimpleScreenState extends State<MapsCheckinSimpleScreen> {
     return Geolocator.distanceBetween(
       _currentPosition!.latitude,
       _currentPosition!.longitude,
-      double.parse(_selectedStore!.latitude),
-      double.parse(_selectedStore!.longitude),
+      double.parse(_selectedStore!.latitude ?? '0'),
+      double.parse(_selectedStore!.longitude ?? '0'),
     );
   }
 
@@ -393,8 +393,8 @@ class _MapsCheckinSimpleScreenState extends State<MapsCheckinSimpleScreen> {
                   ? Geolocator.distanceBetween(
                       _currentPosition!.latitude,
                       _currentPosition!.longitude,
-                      double.parse(store.latitude),
-                      double.parse(store.longitude),
+                      double.parse(store.latitude ?? '0'),
+                      double.parse(store.longitude ?? '0'),
                     )
                   : 0.0;
 

@@ -66,51 +66,6 @@ class AttendanceService {
     }
   }
 
-  // Update getRecordsByDateRange to use the new API structure
-  Future<List<AttendanceRecord>> getRecordsByDateRange(
-    DateTime startDate,
-    DateTime endDate,
-  ) async {
-    try {
-      final token = await AuthService.getToken();
-      if (token == null || token.isEmpty) {
-        print('No authentication token available');
-        return [];
-      }
-
-      // Format dates for API
-      String formattedStartDate =
-          '${startDate.year}-${startDate.month.toString().padLeft(2, '0')}-${startDate.day.toString().padLeft(2, '0')}';
-      String formattedEndDate =
-          '${endDate.year}-${endDate.month.toString().padLeft(2, '0')}-${endDate.day.toString().padLeft(2, '0')}';
-
-      final response = await http.get(
-        Uri.parse(
-          '${Env.apiBaseUrl}/attendances?start_date=$formattedStartDate&end_date=$formattedEndDate',
-        ),
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
-      );
-
-      if (response.statusCode == 200) {
-        final Map<String, dynamic> responseData = jsonDecode(response.body);
-        if (responseData['success'] == true && responseData['data'] != null) {
-          final List<dynamic> records = responseData['data'];
-          return records
-              .map((record) => AttendanceRecord.fromJson(record))
-              .toList();
-        }
-      }
-      return [];
-    } catch (e) {
-      print('Error fetching attendance data: $e');
-      return [];
-    }
-  }
-
   // Get records by status
   Future<List<AttendanceRecord>> getRecordsByStatus(String status) async {
     final allRecords = await getAllRecords();
@@ -556,7 +511,12 @@ class AttendanceService {
         startDate ?? DateTime.now().subtract(const Duration(days: 30));
     final end = endDate ?? DateTime.now();
 
-    final records = await getRecordsByDateRange(start, end);
+    // Get all records and filter by date range
+    final allRecords = await getAllRecords();
+    final records = allRecords.where((record) {
+      return record.date.isAfter(start.subtract(const Duration(days: 1))) &&
+             record.date.isBefore(end.add(const Duration(days: 1)));
+    }).toList();
 
     final totalDays = records.length;
     final completedDays = records.where((r) => r.isCompleted).length;
@@ -668,17 +628,61 @@ class AttendanceService {
     );
   }
 
-  // Get attendance records for a month
+  // Get attendance records for a month using range API (start_date to end_date)
   Future<List<AttendanceRecord>> getAttendanceRecordsForMonth(
     DateTime month,
   ) async {
-    final startOfMonth = DateTime(month.year, month.month, 1);
-    final endOfMonth = DateTime(month.year, month.month + 1, 0);
+    try {
+      final token = await AuthService.getToken();
+      if (token == null || token.isEmpty) {
+        print('No authentication token available for monthly data');
+        return [];
+      }
 
-    return await getAttendanceRecordsForCalendar(
-      startDate: startOfMonth,
-      endDate: endOfMonth,
-    );
+      final startOfMonth = DateTime(month.year, month.month, 1);
+      final today = DateTime.now();
+      final endDate = today.isBefore(DateTime(month.year, month.month + 1, 0)) 
+          ? today 
+          : DateTime(month.year, month.month + 1, 0);
+
+      // Format dates for API
+      String formattedStartDate = '${startOfMonth.year}-${startOfMonth.month.toString().padLeft(2, '0')}-${startOfMonth.day.toString().padLeft(2, '0')}';
+      String formattedEndDate = '${endDate.year}-${endDate.month.toString().padLeft(2, '0')}-${endDate.day.toString().padLeft(2, '0')}';
+
+      print('Fetching attendance from $formattedStartDate to $formattedEndDate...');
+
+      final response = await http.get(
+        Uri.parse('${Env.apiBaseUrl}/attendances?start_date=$formattedStartDate&end_date=$formattedEndDate'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      );
+
+      print('API response: ${response.statusCode}');
+
+      if (response.statusCode == 200) {
+        final Map<String, dynamic> responseData = jsonDecode(response.body);
+        if (responseData['success'] == true && responseData['data'] != null) {
+          final List<dynamic> records = responseData['data'];
+          final allRecords = records
+              .map((record) => AttendanceRecord.fromJson(record))
+              .toList();
+          
+          print('Total records found for month: ${allRecords.length}');
+          return allRecords;
+        }
+      } else {
+        print('API error: ${response.statusCode} - ${response.body}');
+      }
+      
+      return [];
+    } catch (e) {
+      print('Error fetching monthly attendance data: $e');
+      return [];
+    }
   }
 
+  
 }
