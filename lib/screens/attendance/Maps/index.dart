@@ -1,7 +1,7 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
-import '../../models/attendance_record.dart';
+import '../../../models/attendance_record.dart';
 
 class AttendanceMapsScreen extends StatefulWidget {
   final List<AttendanceRecord> attendanceRecords;

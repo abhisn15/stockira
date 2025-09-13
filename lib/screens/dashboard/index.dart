@@ -1,8 +1,8 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
-import 'package:stockira/screens/attandance/index.dart';
-import 'package:stockira/screens/attendance/maps_checkin_simple.dart';
+import 'package:stockira/screens/attendance/index.dart';
+import 'package:stockira/screens/attendance/CheckIn/maps_checkin_simple.dart';
 import 'package:stockira/screens/permit/index.dart';
 import 'package:stockira/screens/itinerary/index.dart';
 import 'package:stockira/screens/reports/index.dart';

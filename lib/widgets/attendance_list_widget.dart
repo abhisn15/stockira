@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import '../models/attendance_record.dart';
-import '../screens/attendance/attendance_detail_maps_screen.dart';
+import '../screens/attendance/Detail/index.dart';
 
 class AttendanceListWidget extends StatelessWidget {
   final List<AttendanceRecord> attendanceRecords;
@@ -235,15 +235,14 @@ class AttendanceListWidget extends StatelessWidget {
                   ),
                 ),
                 const Spacer(),
-                if (_calculateDetailDuration(detail) != null)
-                  Text(
-                    'Duration: ${_formatTime(_calculateDetailDuration(detail))}',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 11,
-                      fontWeight: FontWeight.w500,
-                    ),
+                Text(
+                  'Duration: ${_formatTime(_calculateDetailDuration(detail))}',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w500,
                   ),
+                ),
               ],
             ),
           ),
@@ -333,9 +332,9 @@ class AttendanceListWidget extends StatelessWidget {
                           ),
                           Row(
                             children: [
-                              Text("IN: " + detail.checkInTime.toString().substring(10,15) ?? 'N/A', style: TextStyle(fontSize: 13, color: const Color.fromARGB(255, 26, 176, 0)),),
+                              Text("IN: " + (detail.checkInTime?.toString().substring(10,15) ?? 'N/A'), style: TextStyle(fontSize: 13, color: const Color.fromARGB(255, 26, 176, 0)),),
                               SizedBox(width: 8),
-                              Text("OUT: " + detail.checkOutTime.toString().substring(10,15) ?? 'N/A', style: TextStyle(fontSize: 13, color: const Color.fromARGB(255, 222, 53, 53)),),
+                              Text("OUT: " + (detail.checkOutTime?.toString().substring(10,15) ?? 'N/A'), style: TextStyle(fontSize: 13, color: const Color.fromARGB(255, 222, 53, 53)),),
                             ],
                           )
                         ],
@@ -451,39 +450,6 @@ class AttendanceListWidget extends StatelessWidget {
     );
   }
 
-  Widget _buildTimeInfoForDetail(String label, TimeOfDay time, IconData icon, Color color) {
-    return Container(
-      padding: const EdgeInsets.all(8),
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: color.withOpacity(0.3)),
-      ),
-      child: Column(
-        children: [
-          Icon(icon, color: color, size: 16),
-          const SizedBox(height: 4),
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: 10,
-              color: color,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-          const SizedBox(height: 2),
-          Text(
-            '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}',
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.bold,
-              color: color,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
 
   TimeOfDay _calculateDetailDuration(AttendanceDetail detail) {
     if (detail.checkOutTime == null) {

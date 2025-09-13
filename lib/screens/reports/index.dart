@@ -1,5 +1,16 @@
 import 'package:flutter/material.dart';
 import '../../services/auth_service.dart';
+import '../../services/attendance_service.dart';
+import 'CompetitorActivity/index.dart';
+import 'Display/index.dart';
+import 'ExpiredDate/index.dart';
+import 'OutOfStock/index.dart';
+import 'PricePrincipal/index.dart';
+import 'PriceCompetitor/index.dart';
+import 'ProductBelgianBerry/index.dart';
+import 'ProductFocus/index.dart';
+import 'PromoTracking/index.dart';
+import 'RegularDisplay/index.dart';
 
 class ReportsScreen extends StatefulWidget {
   const ReportsScreen({super.key});
@@ -9,7 +20,6 @@ class ReportsScreen extends StatefulWidget {
 }
 
 class _ReportsScreenState extends State<ReportsScreen> {
-  String _searchQuery = '';
   String? _userRole;
   bool _isLoading = true;
 
@@ -25,7 +35,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
       
       if (user != null && user.employee != null) {
         final position = user.employee!.position;
-        if (position != null && position.name != null && position.name!.isNotEmpty) {
+        if (position != null && position.name.isNotEmpty) {
           setState(() {
             _userRole = position.name;
             _isLoading = false;
@@ -57,7 +67,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
       body: Container(
         decoration: const BoxDecoration(
           gradient: LinearGradient(
-            colors: [Color(0xFF29BDCE), Color(0xFF1E9BA8)],
+            colors: [Color(0xFF29BDCE), Color.fromARGB(255, 255, 255, 255)],
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
           ),
@@ -277,6 +287,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
             _buildReportItem('Sales', Icons.shopping_cart, const Color(0xFF29BDCE)),
             _buildReportItem('OOS', Icons.inventory_2, Colors.red),
             _buildReportItem('Expired Date', Icons.calendar_today, Colors.orange),
+            _buildReportItem('Product Belgian Berry', Icons.local_drink, Colors.brown),
           ]),
           
           const SizedBox(height: 24),
@@ -416,15 +427,415 @@ class _ReportsScreenState extends State<ReportsScreen> {
   }
 
   void _onReportTap(String reportName) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Opening $reportName report...'),
-        backgroundColor: const Color(0xFF29BDCE),
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(8),
+    if (reportName == 'Competitor Activity') {
+      _navigateToCompetitorActivity();
+    } else if (reportName == 'Display') {
+      _navigateToDisplayReport();
+    } else if (reportName == 'Expired Date') {
+      _navigateToExpiredDateReport();
+    } else if (reportName == 'OOS') {
+      _navigateToOutOfStockReport();
+    } else if (reportName == 'Price Principal' || reportName == 'Price Competitor') {
+      _navigateToPriceReport(reportName);
+    } else if (reportName == 'Product Belgian Berry') {
+      _navigateToProductBelgianBerryReport();
+    } else if (reportName == 'Product Focus') {
+      _navigateToProductFocusReport();
+    } else if (reportName == 'Promo Tracking') {
+      _navigateToPromoTrackingReport();
+    } else if (reportName == 'Regular Display') {
+      _navigateToRegularDisplayReport();
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Opening $reportName report...'),
+          backgroundColor: const Color(0xFF29BDCE),
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(8),
+          ),
         ),
-      ),
-    );
+      );
+    }
+  }
+
+  Future<void> _navigateToCompetitorActivity() async {
+    try {
+      // Get current store information from attendance service
+      final attendanceService = AttendanceService();
+      final todayRecord = await attendanceService.getTodayRecord();
+
+      if (todayRecord != null && todayRecord.storeId != null && todayRecord.storeName != null) {
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (context) => CompetitorActivityScreen(
+              storeId: todayRecord.storeId!,
+              storeName: todayRecord.storeName!,
+            ),
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Please check in to a store first before creating competitor activity report'),
+            backgroundColor: Colors.orange,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.all(Radius.circular(8)),
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error: $e'),
+          backgroundColor: Colors.red,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(8),
+          ),
+        ),
+      );
+    }
+  }
+
+  Future<void> _navigateToDisplayReport() async {
+    try {
+      // Get current store information from attendance service
+      final attendanceService = AttendanceService();
+      final todayRecord = await attendanceService.getTodayRecord();
+
+      if (todayRecord != null && todayRecord.storeId != null && todayRecord.storeName != null) {
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (context) => DisplayReportScreen(
+              storeId: todayRecord.storeId!,
+              storeName: todayRecord.storeName!,
+            ),
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Please check in to a store first before creating display report'),
+            backgroundColor: Colors.orange,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.all(Radius.circular(8)),
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error: $e'),
+          backgroundColor: Colors.red,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(8),
+          ),
+        ),
+      );
+    }
+  }
+
+  Future<void> _navigateToExpiredDateReport() async {
+    try {
+      // Get current store information from attendance service
+      final attendanceService = AttendanceService();
+      final todayRecord = await attendanceService.getTodayRecord();
+
+      if (todayRecord != null && todayRecord.storeId != null && todayRecord.storeName != null) {
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (context) => ExpiredDateReportScreen(
+              storeId: todayRecord.storeId!,
+              storeName: todayRecord.storeName!,
+            ),
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Please check in to a store first before creating expired date report'),
+            backgroundColor: Colors.orange,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.all(Radius.circular(8)),
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error: $e'),
+          backgroundColor: Colors.red,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(8),
+          ),
+        ),
+      );
+    }
+  }
+
+  Future<void> _navigateToOutOfStockReport() async {
+    try {
+      // Get current store information from attendance service
+      final attendanceService = AttendanceService();
+      final todayRecord = await attendanceService.getTodayRecord();
+
+      if (todayRecord != null && todayRecord.storeId != null && todayRecord.storeName != null) {
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (context) => OutOfStockReportScreen(
+              storeId: todayRecord.storeId!,
+              storeName: todayRecord.storeName!,
+            ),
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Please check in to a store first before creating out of stock report'),
+            backgroundColor: Colors.orange,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.all(Radius.circular(8)),
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error: $e'),
+          backgroundColor: Colors.red,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(8),
+          ),
+        ),
+      );
+    }
+  }
+
+  Future<void> _navigateToPriceReport(String reportName) async {
+    try {
+      // Get current store information from attendance service
+      final attendanceService = AttendanceService();
+      final todayRecord = await attendanceService.getTodayRecord();
+
+      if (todayRecord != null && todayRecord.storeId != null && todayRecord.storeName != null) {
+        if (reportName == 'Price Principal') {
+          Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (context) => PricePrincipalReportScreen(
+                storeId: todayRecord.storeId!,
+                storeName: todayRecord.storeName!,
+              ),
+            ),
+          );
+        } else if (reportName == 'Price Competitor') {
+          Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (context) => PriceCompetitorReportScreen(
+                storeId: todayRecord.storeId!,
+                storeName: todayRecord.storeName!,
+              ),
+            ),
+          );
+        }
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Please check in to a store first before creating price report'),
+            backgroundColor: Colors.orange,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.all(Radius.circular(8)),
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error: $e'),
+          backgroundColor: Colors.red,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(8),
+          ),
+        ),
+      );
+    }
+  }
+
+  Future<void> _navigateToProductBelgianBerryReport() async {
+    try {
+      // Get current store information from attendance service
+      final attendanceService = AttendanceService();
+      final todayRecord = await attendanceService.getTodayRecord();
+
+      if (todayRecord != null && todayRecord.storeId != null && todayRecord.storeName != null) {
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (context) => ProductBelgianBerryReportScreen(
+              storeId: todayRecord.storeId!,
+              storeName: todayRecord.storeName!,
+            ),
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Please check in to a store first before creating Product Belgian Berry report'),
+            backgroundColor: Colors.orange,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.all(Radius.circular(8)),
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error: $e'),
+          backgroundColor: Colors.red,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(8),
+          ),
+        ),
+      );
+    }
+  }
+
+  Future<void> _navigateToProductFocusReport() async {
+    try {
+      // Get current store information from attendance service
+      final attendanceService = AttendanceService();
+      final todayRecord = await attendanceService.getTodayRecord();
+
+      if (todayRecord != null && todayRecord.storeId != null && todayRecord.storeName != null) {
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (context) => ProductFocusReportScreen(
+              storeId: todayRecord.storeId!,
+              storeName: todayRecord.storeName!,
+            ),
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Please check in to a store first before creating Product Focus report'),
+            backgroundColor: Colors.orange,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.all(Radius.circular(8)),
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error: $e'),
+          backgroundColor: Colors.red,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(8),
+          ),
+        ),
+      );
+    }
+  }
+
+  Future<void> _navigateToPromoTrackingReport() async {
+    try {
+      // Get current store information from attendance service
+      final attendanceService = AttendanceService();
+      final todayRecord = await attendanceService.getTodayRecord();
+
+      if (todayRecord != null && todayRecord.storeId != null && todayRecord.storeName != null) {
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (context) => PromoTrackingReportScreen(
+              storeId: todayRecord.storeId!,
+              storeName: todayRecord.storeName!,
+            ),
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Please check in to a store first before creating Promo Tracking report'),
+            backgroundColor: Colors.orange,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.all(Radius.circular(8)),
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error: $e'),
+          backgroundColor: Colors.red,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(8),
+          ),
+        ),
+      );
+    }
+  }
+
+  Future<void> _navigateToRegularDisplayReport() async {
+    try {
+      // Get current store information from attendance service
+      final attendanceService = AttendanceService();
+      final todayRecord = await attendanceService.getTodayRecord();
+
+      if (todayRecord != null && todayRecord.storeId != null && todayRecord.storeName != null) {
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (context) => RegularDisplayReportScreen(
+              storeId: todayRecord.storeId!,
+              storeName: todayRecord.storeName!,
+            ),
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Please check in to a store first before creating Regular Display report'),
+            backgroundColor: Colors.orange,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.all(Radius.circular(8)),
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error: $e'),
+          backgroundColor: Colors.red,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(8),
+          ),
+        ),
+      );
+    }
   }
 }

@@ -6,7 +6,7 @@ import 'package:stockira/services/itinerary_service.dart';
 import 'package:stockira/models/attendance_record.dart';
 import 'package:stockira/widgets/attendance_list_widget.dart';
 import 'package:stockira/widgets/cute_loading_widget.dart';
-import 'package:stockira/screens/attendance/attendance_maps_screen.dart';
+import 'Maps/index.dart';
 
 class AttendanceScreen extends StatefulWidget {
   const AttendanceScreen({super.key});
@@ -611,7 +611,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Attendance'),
-        backgroundColor: Colors.red,
+        backgroundColor: const Color.fromARGB(255, 41, 189, 206),
         foregroundColor: Colors.white,
         actions: [
           IconButton(
@@ -1061,167 +1061,330 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
     // Achievement = percentage of completed vs planned
     final achievement = plan > 0 ? (actual / plan * 100).round() : 0;
 
-    return Card(
-      elevation: 2,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Period Header
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  'Periode: ${firstDayOfMonth.day.toString().padLeft(2, '0')} ${_monthName(firstDayOfMonth.month).substring(0, 3)} ${firstDayOfMonth.year} s/d ${lastDayOfMonth.day.toString().padLeft(2, '0')} ${_monthName(lastDayOfMonth.month).substring(0, 3)} ${lastDayOfMonth.year}',
-                  style: const TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.black87,
-                  ),
-                ),
-                // Progress indicator
-                Container(
-                  width: 60,
-                  height: 60,
-                  child: Stack(
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final screenWidth = constraints.maxWidth;
+        final isSmallScreen = screenWidth < 360;
+        final isMediumScreen = screenWidth >= 360 && screenWidth < 400;
+        
+        // Responsive sizing
+        final periodFontSize = isSmallScreen ? 11.0 : isMediumScreen ? 12.0 : 13.0;
+        final progressSize = isSmallScreen ? 50.0 : isMediumScreen ? 55.0 : 65.0;
+        final progressFontSize = isSmallScreen ? 10.0 : isMediumScreen ? 11.0 : 12.0;
+        final progressStrokeWidth = isSmallScreen ? 4.0 : isMediumScreen ? 5.0 : 6.0;
+        
+        return Card(
+          elevation: 3,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          child: Container(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(16),
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  Colors.white,
+                  Colors.grey[50]!,
+                ],
+              ),
+            ),
+            child: Padding(
+              padding: EdgeInsets.all(isSmallScreen ? 12.0 : 16.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Period Header with improved styling
+                  // Header and progress indicator sejajar & responsive
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
-                      CircularProgressIndicator(
-                        value: achievement / 100,
-                        strokeWidth: 6,
-                        backgroundColor: Colors.grey[300],
-                        valueColor: AlwaysStoppedAnimation<Color>(
-                          achievement >= 80 ? Colors.green : 
-                          achievement >= 60 ? Colors.orange : Colors.red,
+                      // Header
+                      Expanded(
+                        child: Container(
+                          padding: EdgeInsets.symmetric(
+                            horizontal: isSmallScreen ? 8 : 12,
+                            vertical: isSmallScreen ? 6 : 8,
+                          ),
+                          decoration: BoxDecoration(
+                            gradient: const LinearGradient(
+                              colors: [Color(0xFF29BDCE), Color(0xFF1E9BA8)],
+                            ),
+                            borderRadius: BorderRadius.circular(12),
+                            boxShadow: [
+                              BoxShadow(
+                                color: const Color(0xFF29BDCE).withOpacity(0.3),
+                                blurRadius: 8,
+                                offset: const Offset(0, 2),
+                              ),
+                            ],
+                          ),
+                          child: Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(6),
+                                decoration: BoxDecoration(
+                                  color: Colors.white.withOpacity(0.2),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: const Icon(
+                                  Icons.calendar_today,
+                                  color: Colors.white,
+                                  size: 16,
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  'Periode: ${firstDayOfMonth.day.toString().padLeft(2, '0')} ${_monthName(firstDayOfMonth.month).substring(0, 3)} ${firstDayOfMonth.year} s/d ${lastDayOfMonth.day.toString().padLeft(2, '0')} ${_monthName(lastDayOfMonth.month).substring(0, 3)} ${lastDayOfMonth.year}',
+                                  style: TextStyle(
+                                    fontSize: periodFontSize,
+                                    fontWeight: FontWeight.w600,
+                                    color: Colors.white,
+                                    letterSpacing: 0.3,
+                                  ),
+                                  maxLines: isSmallScreen ? 2 : 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                       ),
-                      Center(
-                        child: Text(
-                          '$achievement%',
-                          style: const TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.bold,
+                      SizedBox(width: isSmallScreen ? 8 : 16),
+                      // Progress indicator
+                      Container(
+                        width: progressSize,
+                        height: progressSize,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          gradient: RadialGradient(
+                            colors: [
+                              Colors.white,
+                              Colors.grey[50]!,
+                            ],
                           ),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.1),
+                              blurRadius: 10,
+                              offset: const Offset(0, 3),
+                            ),
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.05),
+                              blurRadius: 20,
+                              offset: const Offset(0, 6),
+                            ),
+                          ],
+                        ),
+                        child: Stack(
+                          children: [
+                            // Background circle
+                            Center(
+                              child: Container(
+                                width: progressSize - 8,
+                                height: progressSize - 8,
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  color: Colors.grey[100],
+                                ),
+                              ),
+                            ),
+                            // Progress circle
+                            Center(
+                              child: SizedBox(
+                                width: progressSize - 8,
+                                height: progressSize - 8,
+                                child: CircularProgressIndicator(
+                                  value: achievement / 100,
+                                  strokeWidth: progressStrokeWidth,
+                                  backgroundColor: Colors.grey[200],
+                                  valueColor: AlwaysStoppedAnimation<Color>(
+                                    achievement >= 80
+                                        ? Colors.green[600]!
+                                        : achievement >= 60
+                                            ? Colors.orange[600]!
+                                            : Colors.red[600]!,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            // Percentage text
+                            Center(
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Text(
+                                    '$achievement%',
+                                    style: TextStyle(
+                                      fontSize: progressFontSize,
+                                      fontWeight: FontWeight.bold,
+                                      color: achievement >= 80
+                                          ? Colors.green[700]
+                                          : achievement >= 60
+                                              ? Colors.orange[700]
+                                              : Colors.red[700],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     ],
                   ),
-                ),
-              ],
+                  SizedBox(height: isSmallScreen ? 12 : 16),
+                  SizedBox(height: isSmallScreen ? 12 : 16),
+                  
+                  // KPI Row 1
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _buildKPIItem(
+                          'Progress',
+                          '$actual/$plan',
+                          Colors.green,
+                        ),
+                      ),
+                      SizedBox(width: isSmallScreen ? 4 : 8),
+                      Expanded(
+                        child: _buildKPIItem(
+                          'Plan',
+                          '$plan',
+                          Colors.blue,
+                        ),
+                      ),
+                      SizedBox(width: isSmallScreen ? 4 : 8),
+                      Expanded(
+                        child: _buildKPIItem(
+                          'Actual',
+                          '$actual',
+                          Colors.orange,
+                        ),
+                      ),
+                      SizedBox(width: isSmallScreen ? 4 : 8),
+                      Expanded(
+                        child: _buildKPIItem(
+                          'Ach',
+                          '${achievement.toStringAsFixed(0)}%',
+                          Colors.purple,
+                        ),
+                      ),
+                    ],
+                  ),
+                  SizedBox(height: isSmallScreen ? 6 : 8),
+                  
+                  // KPI Row 2
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _buildKPIItem(
+                          'Unique Store',
+                          '$uniqueStores',
+                          Colors.teal,
+                        ),
+                      ),
+                      SizedBox(width: isSmallScreen ? 4 : 8),
+                      Expanded(
+                        child: _buildKPIItem(
+                          'No Out',
+                          '$noOutCount',
+                          Colors.red,
+                        ),
+                      ),
+                      SizedBox(width: isSmallScreen ? 4 : 8),
+                      Expanded(
+                        child: _buildKPIItem(
+                          '<5 Menit',
+                          '$lessThan5MinCount',
+                          Colors.amber,
+                        ),
+                      ),
+                      SizedBox(width: isSmallScreen ? 4 : 8),
+                      Expanded(
+                        child: _buildKPIItem(
+                          'Working Hours',
+                          '${workingHours.toStringAsFixed(1)}h',
+                          Colors.indigo,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
             ),
-            const SizedBox(height: 16),
-            
-            // KPI Row 1
-            Row(
-              children: [
-                Expanded(
-                  child: _buildKPIItem(
-                    'Progress',
-                    '$actual/$plan',
-                    Colors.green,
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: _buildKPIItem(
-                    'Plan',
-                    '$plan',
-                    Colors.blue,
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: _buildKPIItem(
-                    'Actual',
-                    '$actual',
-                    Colors.orange,
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: _buildKPIItem(
-                    'Ach',
-                    '${achievement.toStringAsFixed(0)}%',
-                    Colors.purple,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            
-            // KPI Row 2
-            Row(
-              children: [
-                Expanded(
-                  child: _buildKPIItem(
-                    'Unique Store',
-                    '$uniqueStores',
-                    Colors.teal,
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: _buildKPIItem(
-                    'No Out',
-                    '$noOutCount',
-                    Colors.red,
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: _buildKPIItem(
-                    '<5 Menit',
-                    '$lessThan5MinCount',
-                    Colors.amber,
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: _buildKPIItem(
-                    'Working Hours',
-                    '${workingHours.toStringAsFixed(1)}h',
-                    Colors.indigo,
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
+          ),
+        );
+      },
     );
   }
 
   Widget _buildKPIItem(String title, String value, Color color) {
-    return Container(
-      padding: const EdgeInsets.all(8),
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: color.withOpacity(0.3)),
-      ),
-      child: Column(
-        children: [
-          Text(
-            value,
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.bold,
-              color: color,
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final screenWidth = constraints.maxWidth;
+        final isSmallScreen = screenWidth < 360;
+        
+        // Responsive sizing for KPI items
+        final padding = isSmallScreen ? 6.0 : 8.0;
+        final valueFontSize = isSmallScreen ? 10.0 : 12.0;
+        final titleFontSize = isSmallScreen ? 8.0 : 9.0;
+        final borderRadius = isSmallScreen ? 6.0 : 8.0;
+        
+        return Container(
+          padding: EdgeInsets.all(padding),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                color.withOpacity(0.1),
+                color.withOpacity(0.05),
+              ],
             ),
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 2),
-          Text(
-            title,
-            style: const TextStyle(
-              fontSize: 9,
-              color: Colors.black54,
+            borderRadius: BorderRadius.circular(borderRadius),
+            border: Border.all(
+              color: color.withOpacity(0.3),
+              width: 1,
             ),
-            textAlign: TextAlign.center,
+            boxShadow: [
+              BoxShadow(
+                color: color.withOpacity(0.1),
+                blurRadius: 4,
+                offset: const Offset(0, 1),
+              ),
+            ],
           ),
-        ],
-      ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                value,
+                style: TextStyle(
+                  fontSize: valueFontSize,
+                  fontWeight: FontWeight.bold,
+                  color: color,
+                ),
+                textAlign: TextAlign.center,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+              const SizedBox(height: 2),
+              Text(
+                title,
+                style: TextStyle(
+                  fontSize: titleFontSize,
+                  color: Colors.black54,
+                  fontWeight: FontWeight.w500,
+                ),
+                textAlign: TextAlign.center,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 }

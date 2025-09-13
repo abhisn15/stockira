@@ -52,8 +52,8 @@ class Itinerary {
   factory Itinerary.fromJson(Map<String, dynamic> json) {
     try {
       return Itinerary(
-        id: json['id'] as int,
-        date: json['date'] as String,
+        id: json['id'] as int? ?? 0,
+        date: json['date'] as String? ?? '',
         stores: (json['stores'] as List<dynamic>?)
             ?.map((item) => Store.fromJson(item as Map<String, dynamic>))
             .toList() ?? [],
@@ -118,9 +118,9 @@ class Store {
   factory Store.fromJson(Map<String, dynamic> json) {
     try {
       return Store(
-        id: json['id'] as int,
-        name: json['name'] as String,
-        code: json['code'] as String,
+        id: json['id'] as int? ?? 0,
+        name: json['name'] as String? ?? '',
+        code: json['code'] as String? ?? '',
         category: json['category'] as String?,
         distribution: json['distribution'] as String?,
         ownerName: json['owner_name'] as String?,
