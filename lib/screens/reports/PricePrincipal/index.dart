@@ -5,6 +5,7 @@ import 'dart:convert';
 import 'package:intl/intl.dart';
 import '../../../config/env.dart';
 import '../../../services/auth_service.dart';
+import '../../../services/report_completion_service.dart';
 
 class PricePrincipalReportScreen extends StatefulWidget {
   const PricePrincipalReportScreen({super.key, required this.storeId, required this.storeName});
@@ -65,35 +66,11 @@ class _PricePrincipalReportScreenState extends State<PricePrincipalReportScreen>
   }
 
   Future<void> _loadStoreFromCheckIn() async {
-    try {
-      final token = await AuthService.getToken();
-      if (token == null || token.isEmpty) {
-        print('No authentication token available');
-        return;
-      }
-
-      final response = await http.get(
-        Uri.parse('${Env.apiBaseUrl}/attendances/store/check-in'),
-        headers: {
-          'Authorization': 'Bearer $token',
-          'Content-Type': 'application/json',
-        },
-      );
-
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        if (data['data'] != null && data['data'].isNotEmpty) {
-          final storeData = data['data'][0]; // Get first store from check-in
-          setState(() {
-            _storeId = storeData['id'];
-          });
-        }
-      } else {
-        print('Error loading store: ${response.statusCode} - ${response.body}');
-      }
-    } catch (e) {
-      print('Error loading store from check-in: $e');
-    }
+    // Use storeId from widget instead of API call
+    setState(() {
+      _storeId = widget.storeId;
+    });
+    print('✅ Price Principal: Using storeId from widget: ${widget.storeId}');
   }
 
   Future<void> _loadProducts() async {
@@ -258,6 +235,20 @@ class _PricePrincipalReportScreenState extends State<PricePrincipalReportScreen>
       );
 
       if (response.statusCode == 200 || response.statusCode == 201) {
+        // Save completion status to local storage
+        final submissionTime = DateTime.now();
+        await ReportCompletionService.markReportCompleted(
+          storeId: _storeId!,
+          reportType: 'price_principal',
+          date: DateFormat('yyyy-MM-dd').format(_selectedDate!),
+          completedAt: submissionTime,
+          reportData: {
+            'originId': 2, // Principal
+            'productsCount': _products.length,
+            'submittedAt': submissionTime.toIso8601String(),
+          },
+        );
+        
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Price report submitted successfully!'),
@@ -268,7 +259,7 @@ class _PricePrincipalReportScreenState extends State<PricePrincipalReportScreen>
             ),
           ),
         );
-        Navigator.pop(context);
+        Navigator.pop(context, true); // Return true to indicate successful submission
       } else {
         final errorData = jsonDecode(response.body);
         ScaffoldMessenger.of(context).showSnackBar(

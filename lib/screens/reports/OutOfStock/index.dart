@@ -224,7 +224,8 @@ class _OutOfStockReportScreenState extends State<OutOfStockReportScreen> {
 
       if (response.success) {
         _showSuccessSnackBar('Out of stock report submitted successfully!');
-        Navigator.of(context).pop();
+        // Return success to trigger todo refresh
+        Navigator.of(context).pop(true);
       } else {
         _showErrorSnackBar(response.message);
       }

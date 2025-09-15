@@ -4,6 +4,8 @@ import 'package:stockira/screens/auth/index.dart';
 import 'package:stockira/screens/dashboard/index.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:stockira/services/auth_service.dart';
+import 'package:stockira/services/theme_service.dart';
+import 'package:stockira/services/language_service.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 void main() async {
@@ -13,23 +15,50 @@ void main() async {
   runApp(const MyApp());
 }
 
-class MyApp extends StatelessWidget {
+class MyApp extends StatefulWidget {
   const MyApp({super.key});
+
+  @override
+  State<MyApp> createState() => _MyAppState();
+}
+
+class _MyAppState extends State<MyApp> {
+  ThemeData _currentTheme = ThemeService.lightTheme;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadTheme();
+    _initializeLanguage();
+  }
+
+  Future<void> _initializeLanguage() async {
+    await LanguageService.initialize();
+  }
+
+  Future<void> _loadTheme() async {
+    final theme = await ThemeService.getCurrentTheme();
+    setState(() {
+      _currentTheme = theme;
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'Stockira',
-      theme: ThemeData(
-        primarySwatch: Colors.blue,
+      theme: _currentTheme,
+      home: AuthWrapper(
+        onThemeChanged: _loadTheme,
       ),
-      home: const AuthWrapper(),
     );
   }
 }
 
 class AuthWrapper extends StatefulWidget {
-  const AuthWrapper({super.key});
+  final VoidCallback? onThemeChanged;
+  
+  const AuthWrapper({super.key, this.onThemeChanged});
 
   @override
   State<AuthWrapper> createState() => _AuthWrapperState();
@@ -87,6 +116,8 @@ class _AuthWrapperState extends State<AuthWrapper> {
     }
 
     // If logged in, show dashboard, otherwise show login
-    return _isLoggedIn ? const DashboardScreen() : const AuthScreen();
+    return _isLoggedIn 
+        ? DashboardScreen(onThemeChanged: widget.onThemeChanged) 
+        : const AuthScreen();
   }
 }

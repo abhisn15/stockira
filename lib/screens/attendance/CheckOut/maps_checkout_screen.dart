@@ -1,0 +1,855 @@
+import 'dart:async';
+import 'dart:io';
+import 'package:flutter/material.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:image_picker/image_picker.dart';
+import '../../../services/attendance_service.dart';
+import '../../../models/attendance_record.dart';
+
+class MapsCheckoutScreen extends StatefulWidget {
+  final AttendanceRecord currentRecord;
+
+  const MapsCheckoutScreen({
+    super.key,
+    required this.currentRecord,
+  });
+
+  @override
+  State<MapsCheckoutScreen> createState() => _MapsCheckoutScreenState();
+}
+
+class _MapsCheckoutScreenState extends State<MapsCheckoutScreen> {
+  GoogleMapController? _mapController;
+  Position? _currentPosition;
+  bool _isLoading = true;
+  String? _mapsError;
+  
+  Set<Marker> _markers = {};
+
+  // Checkout form
+  XFile? _selectedImage;
+  final TextEditingController _noteController = TextEditingController();
+  bool _isSubmitting = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _getCurrentLocation();
+  }
+
+  @override
+  void dispose() {
+    _noteController.dispose();
+    super.dispose();
+  }
+
+  // Manual location refresh method
+  Future<void> _refreshLocation() async {
+    try {
+      print('🔄 Manual location refresh...');
+      
+      if (mounted) {
+        setState(() {
+          _isLoading = true;
+        });
+      }
+
+      await _getCurrentLocation();
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Location refreshed successfully'),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      print('❌ Error refreshing location: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to refresh location: $e'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _getCurrentLocation() async {
+    try {
+      print('📍 Getting current location...');
+      
+      if (mounted) {
+        setState(() {
+          _isLoading = true;
+        });
+      }
+
+      // Check if location services are enabled
+      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        throw Exception('Location services are disabled');
+      }
+
+      // Check location permissions
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+        if (permission == LocationPermission.denied) {
+          throw Exception('Location permissions are denied');
+        }
+      }
+
+      if (permission == LocationPermission.deniedForever) {
+        throw Exception('Location permissions are permanently denied');
+      }
+
+      // Get current position
+      Position position = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+        timeLimit: const Duration(seconds: 10),
+      );
+
+      print('✅ Location obtained: ${position.latitude}, ${position.longitude}');
+
+      if (mounted) {
+        setState(() {
+          _currentPosition = position;
+          _isLoading = false;
+          _mapsError = null;
+        });
+        
+        _updateMarkers();
+      }
+    } catch (e) {
+      print('❌ Error getting location: $e');
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _mapsError = e.toString();
+        });
+      }
+    }
+  }
+
+
+  void _updateMarkers() {
+    // Use the safer update method
+    _updateMarkersSimple();
+  }
+
+
+  double _getDistanceToStore() {
+    if (_currentPosition == null || widget.currentRecord.details.isEmpty) {
+      return double.infinity;
+    }
+
+    // Use the first detail's check-in location as store location
+    final detail = widget.currentRecord.details.first;
+    return Geolocator.distanceBetween(
+      _currentPosition!.latitude,
+      _currentPosition!.longitude,
+      detail.latitudeIn,
+      detail.longitudeIn,
+    );
+  }
+
+  void _updateMarkersSimple() {
+    if (_currentPosition == null) return;
+
+    final markers = <Marker>{};
+
+    // Current position marker
+    markers.add(
+      Marker(
+        markerId: const MarkerId('current_position'),
+        position: LatLng(_currentPosition!.latitude, _currentPosition!.longitude),
+        icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue),
+        infoWindow: const InfoWindow(
+          title: 'Your Location',
+          snippet: 'Current position',
+        ),
+      ),
+    );
+
+    // Store marker (if available)
+    if (widget.currentRecord.details.isNotEmpty) {
+      final detail = widget.currentRecord.details.first;
+      markers.add(
+        Marker(
+          markerId: const MarkerId('store_location'),
+          position: LatLng(
+            detail.latitudeIn,
+            detail.longitudeIn,
+          ),
+          icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed),
+          infoWindow: InfoWindow(
+            title: detail.storeName,
+            snippet: 'Check-out location',
+          ),
+        ),
+      );
+    }
+
+    if (mounted) {
+      setState(() {
+        _markers = markers;
+      });
+    }
+  }
+
+  Future<void> _goToTargetLocation() async {
+    if (_mapController == null || widget.currentRecord.details.isEmpty) {
+      return;
+    }
+
+    try {
+      final detail = widget.currentRecord.details.first;
+      await _mapController!.animateCamera(
+        CameraUpdate.newLatLng(
+          LatLng(
+            detail.latitudeIn,
+            detail.longitudeIn,
+          ),
+        ),
+      );
+    } catch (e) {
+      print('❌ Error going to target: $e');
+    }
+  }
+
+
+  Future<void> _takePicture() async {
+    final ImagePicker picker = ImagePicker();
+
+    showModalBottomSheet(
+      context: context,
+      builder: (BuildContext context) {
+        return SafeArea(
+          child: Wrap(
+            children: [
+              ListTile(
+                leading: const Icon(Icons.camera_alt),
+                title: const Text('Camera'),
+                onTap: () async {
+                  Navigator.of(context).pop();
+                  final XFile? image = await picker.pickImage(
+                    source: ImageSource.camera,
+                    imageQuality: 80,
+                  );
+                  if (image != null) {
+                    setState(() {
+                      _selectedImage = image;
+                    });
+                    // Auto-show submit dialog after taking photo
+                    _showSubmitDialog();
+                  }
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.photo_library),
+                title: const Text('Gallery'),
+                onTap: () async {
+                  Navigator.of(context).pop();
+                  final XFile? image = await picker.pickImage(
+                    source: ImageSource.gallery,
+                    imageQuality: 80,
+                  );
+                  if (image != null) {
+                    setState(() {
+                      _selectedImage = image;
+                    });
+                    // Auto-show submit dialog after selecting from gallery
+                    _showSubmitDialog();
+                  }
+                },
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  void _showSubmitDialog() {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Row(
+            children: [
+              Icon(Icons.check_circle, color: Colors.green),
+              SizedBox(width: 8),
+              Text('Ready to Check Out'),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('Photo captured successfully!'),
+              const SizedBox(height: 16),
+              TextField(
+                controller: _noteController,
+                decoration: const InputDecoration(
+                  labelText: 'Note (Optional)',
+                  hintText: 'Add your checkout note...',
+                  border: OutlineInputBorder(),
+                  prefixIcon: Icon(Icons.note),
+                ),
+                maxLines: 3,
+                autofocus: true,
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+                _submitCheckout();
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red,
+                foregroundColor: Colors.white,
+              ),
+              child: const Text('Check Out'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Future<void> _submitCheckout() async {
+    if (_selectedImage == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please take a photo first'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    // Note is now optional, no validation needed
+
+    try {
+      setState(() {
+        _isSubmitting = true;
+      });
+
+      await AttendanceService().checkOut(
+        image: _selectedImage!,
+        note: _noteController.text.trim().isEmpty ? 'Checkout completed' : _noteController.text.trim(),
+      );
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Successfully checked out'),
+            backgroundColor: Colors.green,
+          ),
+        );
+        Navigator.of(context).pop(true); // Return success
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Checkout failed: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isSubmitting = false;
+        });
+      }
+    }
+  }
+
+  String _formatTime(DateTime dateTime) {
+    return '${dateTime.hour.toString().padLeft(2, '0')}:${dateTime.minute.toString().padLeft(2, '0')}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Check Out'),
+        backgroundColor: Colors.red,
+        foregroundColor: Colors.white,
+        actions: [
+          IconButton(
+            onPressed: _refreshLocation,
+            icon: const Icon(Icons.refresh),
+            tooltip: 'Refresh location',
+          ),
+          if (widget.currentRecord.details.isNotEmpty)
+            IconButton(
+              onPressed: _goToTargetLocation,
+              icon: const Icon(Icons.store),
+              tooltip: 'Go to store location',
+            ),
+        ],
+      ),
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : _mapsError != null
+              ? _buildErrorState()
+              : _buildMapWithCheckoutForm(),
+    );
+  }
+
+  Widget _buildErrorState() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const Icon(
+            Icons.error_outline,
+            size: 64,
+            color: Colors.red,
+          ),
+          const SizedBox(height: 16),
+          Text(
+            'Location Error',
+            style: Theme.of(context).textTheme.headlineSmall,
+          ),
+          const SizedBox(height: 8),
+          Text(
+            _mapsError ?? 'Unknown error',
+            textAlign: TextAlign.center,
+            style: Theme.of(context).textTheme.bodyMedium,
+          ),
+          const SizedBox(height: 24),
+          ElevatedButton(
+            onPressed: _getCurrentLocation,
+            child: const Text('Retry'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMapWithCheckoutForm() {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        return Column(
+          children: [
+            // Map
+            Expanded(
+              flex: 2,
+              child: _buildMinimalMap(),
+            ),
+            // Checkout form
+            Expanded(
+              flex: 1,
+              child: _buildCheckoutForm(constraints),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildMinimalMap() {
+    if (_currentPosition == null) {
+      return const Center(
+        child: CircularProgressIndicator(),
+      );
+    }
+
+    return GoogleMap(
+      onMapCreated: (GoogleMapController controller) {
+        _mapController = controller;
+      },
+      initialCameraPosition: CameraPosition(
+        target: LatLng(_currentPosition!.latitude, _currentPosition!.longitude),
+        zoom: 16.0,
+      ),
+      markers: _markers,
+      myLocationEnabled: true,
+      myLocationButtonEnabled: false,
+      zoomControlsEnabled: false,
+      mapToolbarEnabled: false,
+      compassEnabled: true,
+      rotateGesturesEnabled: true,
+      scrollGesturesEnabled: true,
+      tiltGesturesEnabled: true,
+      zoomGesturesEnabled: true,
+    );
+  }
+
+  Widget _buildCheckoutForm(BoxConstraints constraints) {
+    final distance = _getDistanceToStore();
+    final availableHeight = constraints.maxHeight;
+    final isSmallScreen = availableHeight < 600;
+
+    return Container(
+      padding: EdgeInsets.all(isSmallScreen ? 12 : 16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: const BorderRadius.only(
+          topLeft: Radius.circular(20),
+          topRight: Radius.circular(20),
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.grey.withOpacity(0.3),
+            blurRadius: 10,
+            offset: const Offset(0, -5),
+          ),
+        ],
+      ),
+      child: SingleChildScrollView(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Header
+            Row(
+              children: [
+                Container(
+                  padding: EdgeInsets.all(isSmallScreen ? 6 : 8),
+                  decoration: BoxDecoration(
+                    color: Colors.red.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Icon(
+                    Icons.logout,
+                    color: Colors.red,
+                    size: isSmallScreen ? 20 : 24,
+                  ),
+                ),
+                SizedBox(width: isSmallScreen ? 8 : 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Check Out',
+                        style: TextStyle(
+                          fontSize: isSmallScreen ? 16 : 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      Text(
+                        widget.currentRecord.details.isNotEmpty 
+                            ? widget.currentRecord.details.first.storeName 
+                            : 'Unknown Store',
+                        style: TextStyle(
+                          fontSize: isSmallScreen ? 12 : 14,
+                          color: Colors.grey[600],
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            SizedBox(height: isSmallScreen ? 12 : 16),
+
+            // Location info - Compact version for small screens
+            Container(
+              padding: EdgeInsets.all(isSmallScreen ? 8 : 12),
+              decoration: BoxDecoration(
+                color: Colors.grey[50],
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.grey[300]!),
+              ),
+              child: isSmallScreen 
+                ? Row(
+                    children: [
+                      Icon(
+                        Icons.location_on,
+                        size: 14,
+                        color: Colors.grey[600],
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        '${distance.toStringAsFixed(0)}m',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: Colors.grey[600],
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Icon(
+                        Icons.gps_fixed,
+                        size: 14,
+                        color: Colors.green,
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        'GPS Ready',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: Colors.green,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                  )
+                : Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.location_on,
+                            size: 16,
+                            color: Colors.grey[600],
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            'Distance: ${distance.toStringAsFixed(0)}m',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.grey[600],
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.gps_fixed,
+                            size: 16,
+                            color: Colors.grey[600],
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'Location: ${_currentPosition?.latitude.toStringAsFixed(6) ?? 'N/A'}, ${_currentPosition?.longitude.toStringAsFixed(6) ?? 'N/A'}',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.grey[600],
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.gps_fixed,
+                            size: 16,
+                            color: Colors.grey[600],
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            'Accuracy: ${_currentPosition?.accuracy.toStringAsFixed(1) ?? 'N/A'}m',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.grey[600],
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.gps_fixed,
+                            size: 16,
+                            color: Colors.green,
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            'GPS Ready - Tap refresh to update',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.green,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+            ),
+            SizedBox(height: isSmallScreen ? 12 : 16),
+
+            // Photo section
+            Row(
+              children: [
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: _takePicture,
+                    icon: Icon(
+                      Icons.camera_alt,
+                      size: isSmallScreen ? 16 : 20,
+                    ),
+                    label: Text(
+                      _selectedImage == null ? 'Take Photo' : 'Change Photo',
+                      style: TextStyle(
+                        fontSize: isSmallScreen ? 12 : 14,
+                      ),
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: _selectedImage == null ? Colors.grey[300] : Colors.green,
+                      foregroundColor: _selectedImage == null ? Colors.grey[600] : Colors.white,
+                      padding: EdgeInsets.symmetric(
+                        vertical: isSmallScreen ? 8 : 12,
+                        horizontal: isSmallScreen ? 8 : 16,
+                      ),
+                    ),
+                  ),
+                ),
+                if (_selectedImage != null) ...[
+                  SizedBox(width: isSmallScreen ? 8 : 12),
+                  Container(
+                    width: isSmallScreen ? 50 : 60,
+                    height: isSmallScreen ? 50 : 60,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.grey[300]!),
+                    ),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(8),
+                      child: Image.file(
+                        File(_selectedImage!.path),
+                        fit: BoxFit.cover,
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+            SizedBox(height: isSmallScreen ? 12 : 16),
+
+            // Note section (only show if no photo taken yet)
+            if (_selectedImage == null) ...[
+              TextField(
+                controller: _noteController,
+                decoration: InputDecoration(
+                  labelText: 'Note (Optional)',
+                  hintText: 'Add your checkout note...',
+                  border: const OutlineInputBorder(),
+                  prefixIcon: Icon(
+                    Icons.note,
+                    size: isSmallScreen ? 18 : 20,
+                  ),
+                  contentPadding: EdgeInsets.symmetric(
+                    vertical: isSmallScreen ? 8 : 12,
+                    horizontal: 12,
+                  ),
+                ),
+                maxLines: isSmallScreen ? 1 : 2,
+                style: TextStyle(
+                  fontSize: isSmallScreen ? 12 : 14,
+                ),
+              ),
+              SizedBox(height: isSmallScreen ? 12 : 16),
+
+              // Submit button (only show if no photo taken yet)
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: _isSubmitting ? null : _submitCheckout,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.red,
+                    foregroundColor: Colors.white,
+                    padding: EdgeInsets.symmetric(
+                      vertical: isSmallScreen ? 12 : 16,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                  ),
+                  child: _isSubmitting
+                      ? Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            SizedBox(
+                              width: isSmallScreen ? 16 : 20,
+                              height: isSmallScreen ? 16 : 20,
+                              child: const CircularProgressIndicator(
+                                strokeWidth: 2,
+                                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                              ),
+                            ),
+                            SizedBox(width: isSmallScreen ? 8 : 12),
+                            Text(
+                              'Checking Out...',
+                              style: TextStyle(
+                                fontSize: isSmallScreen ? 12 : 14,
+                              ),
+                            ),
+                          ],
+                        )
+                      : Text(
+                          'Check Out',
+                          style: TextStyle(
+                            fontSize: isSmallScreen ? 14 : 16,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                ),
+              ),
+            ] else ...[
+              // Show message when photo is taken
+              Container(
+                padding: EdgeInsets.all(isSmallScreen ? 8 : 12),
+                decoration: BoxDecoration(
+                  color: Colors.green.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.green.withOpacity(0.3)),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.check_circle,
+                      color: Colors.green,
+                      size: isSmallScreen ? 16 : 20,
+                    ),
+                    SizedBox(width: isSmallScreen ? 6 : 8),
+                    Expanded(
+                      child: Text(
+                        'Photo captured! Tap "Take Photo" again to change or wait for auto-submit dialog.',
+                        style: TextStyle(
+                          fontSize: isSmallScreen ? 10 : 12,
+                          color: Colors.green[700],
+                          fontWeight: FontWeight.w500,
+                        ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}

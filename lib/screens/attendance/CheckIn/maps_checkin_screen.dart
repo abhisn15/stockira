@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import '../../../services/language_service.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:image_picker/image_picker.dart';
 import 'dart:io';
+import 'dart:async';
 import '../../../models/itinerary.dart';
 import '../../../services/attendance_service.dart';
 import '../../../services/maps_service.dart';
@@ -58,6 +60,48 @@ class _MapsCheckinScreenState extends State<MapsCheckinScreen> {
     _getCurrentLocation();
   }
 
+  // Manual location refresh method
+  Future<void> _refreshLocation() async {
+    try {
+      print('🔄 Manual location refresh...');
+      
+      if (mounted) {
+        setState(() {
+          _isLoading = true;
+        });
+      }
+
+      await _getCurrentLocation();
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(LanguageService.locationRefreshedSuccessfully),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      print('❌ Error refreshing location: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('${LanguageService.failedToRefreshLocation}: $e'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
   @override
   void dispose() {
     _noteController.dispose();
@@ -96,7 +140,7 @@ class _MapsCheckinScreenState extends State<MapsCheckinScreen> {
       print('📡 Getting current position...');
       final position = await Geolocator.getCurrentPosition(
         desiredAccuracy: LocationAccuracy.high,
-        timeLimit: const Duration(seconds: 15), // Add timeout
+        timeLimit: const Duration(seconds: 10), // Reduced timeout for faster response
       );
       
       print('✅ Got location: ${position.latitude}, ${position.longitude}');
@@ -107,13 +151,8 @@ class _MapsCheckinScreenState extends State<MapsCheckinScreen> {
           _isLoading = false;
         });
 
-        // Delay marker update to prevent crashes
-        print('⏰ Scheduling marker update...');
-        Future.delayed(const Duration(milliseconds: 1000), () {
-          if (mounted) {
-            _updateMarkers();
-          }
-        });
+        // Update markers immediately
+        _updateMarkers();
       }
     } catch (e) {
       print('❌ Location error: $e');
@@ -140,7 +179,7 @@ class _MapsCheckinScreenState extends State<MapsCheckinScreen> {
         
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Using default location: $e'),
+            content: Text('${LanguageService.usingDefaultLocation}: $e'),
             backgroundColor: Colors.orange,
             action: SnackBarAction(
               label: 'Settings',
@@ -148,7 +187,7 @@ class _MapsCheckinScreenState extends State<MapsCheckinScreen> {
                 // Open app settings - in real app, use app_settings plugin
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(
-                    content: Text('Please enable location permissions in device settings'),
+                    content: Text(LanguageService.pleaseEnableLocationPermissions),
                   ),
                 );
               },
@@ -159,10 +198,12 @@ class _MapsCheckinScreenState extends State<MapsCheckinScreen> {
     }
   }
 
+
   void _updateMarkers() {
     // Use the safer update method
     _updateMarkersSimple();
   }
+
 
   double _getDistanceToStore() {
     if (_currentPosition == null || _selectedStore == null) return double.infinity;
@@ -241,6 +282,7 @@ class _MapsCheckinScreenState extends State<MapsCheckinScreen> {
     }
   }
 
+
   Future<void> _takePicture() async {
     final ImagePicker picker = ImagePicker();
 
@@ -253,7 +295,7 @@ class _MapsCheckinScreenState extends State<MapsCheckinScreen> {
             children: [
               ListTile(
                 leading: const Icon(Icons.camera_alt),
-                title: const Text('Take Photo'),
+                title: Text(LanguageService.takePhoto),
                 onTap: () async {
                   Navigator.pop(context);
                   try {
@@ -272,7 +314,7 @@ class _MapsCheckinScreenState extends State<MapsCheckinScreen> {
                     if (mounted) {
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
-                          content: Text('Error taking picture: $e'),
+                          content: Text('${LanguageService.errorTakingPicture}: $e'),
                           backgroundColor: Colors.red,
                         ),
                       );
@@ -282,7 +324,7 @@ class _MapsCheckinScreenState extends State<MapsCheckinScreen> {
               ),
               ListTile(
                 leading: const Icon(Icons.photo_library),
-                title: const Text('Choose from Gallery'),
+                title: Text(LanguageService.chooseFromGallery),
                 onTap: () async {
                   Navigator.pop(context);
                   try {
@@ -301,7 +343,7 @@ class _MapsCheckinScreenState extends State<MapsCheckinScreen> {
                     if (mounted) {
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
-                          content: Text('Error selecting image: $e'),
+                          content: Text('${LanguageService.errorSelectingImage}: $e'),
                           backgroundColor: Colors.red,
                         ),
                       );
@@ -325,7 +367,7 @@ class _MapsCheckinScreenState extends State<MapsCheckinScreen> {
     if (!_isDistanceValid || !_isPhotoValid || !_isNoteValid) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Please complete all requirements before checking in'),
+          content: Text(LanguageService.pleaseCompleteAllRequirements),
           backgroundColor: Colors.orange,
         ),
       );
@@ -336,16 +378,16 @@ class _MapsCheckinScreenState extends State<MapsCheckinScreen> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Confirm Check-in'),
+        title: Text(LanguageService.confirmCheckIn),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('Are you sure you want to check in?'),
+            Text(LanguageService.areYouSureCheckIn),
             const SizedBox(height: 16),
-            Text('Store: ${_selectedStore!.name}'),
-            Text('Distance: ${_formatDistance(_getDistanceToStore())}'),
-            Text('Time: ${_formatDateTime(_currentTime)}'),
+            Text('${LanguageService.store}: ${_selectedStore!.name}'),
+            Text('${LanguageService.distance}: ${_formatDistance(_getDistanceToStore())}'),
+            Text('${LanguageService.time}: ${_formatDateTime(_currentTime)}'),
           ],
         ),
         actions: [
@@ -982,10 +1024,15 @@ class _MapsCheckinScreenState extends State<MapsCheckinScreen> {
                             textAlign: TextAlign.center,
                           ),
                         ),
+                        IconButton(
+                          onPressed: _refreshLocation,
+                          icon: const Icon(Icons.refresh),
+                          tooltip: 'Refresh location',
+                        ),
                         if (_selectedStore != null)
                           IconButton(
                             onPressed: _goToTargetLocation,
-                            icon: const Icon(Icons.my_location),
+                            icon: const Icon(Icons.store),
                             tooltip: 'Go to store location',
                           ),
                       ],
@@ -1025,17 +1072,17 @@ class _MapsCheckinScreenState extends State<MapsCheckinScreen> {
           ),
           
           // Absolutely minimal configuration
-          markers: const <Marker>{}, // Empty markers
-          myLocationEnabled: false,
+          markers: _markers, // Use current markers
+          myLocationEnabled: true, // Enable to show current location
           myLocationButtonEnabled: false,
           zoomControlsEnabled: false,
           mapToolbarEnabled: false,
           
-          // All gestures disabled initially
-          rotateGesturesEnabled: false,
-          tiltGesturesEnabled: false,
-          scrollGesturesEnabled: false,
-          zoomGesturesEnabled: false,
+          // Enable basic gestures for better UX
+          rotateGesturesEnabled: true,
+          tiltGesturesEnabled: true,
+          scrollGesturesEnabled: true,
+          zoomGesturesEnabled: true,
           
           // No event handlers at all
         ),
@@ -1363,20 +1410,83 @@ class _MapsCheckinScreenState extends State<MapsCheckinScreen> {
                   width: 1,
                 ),
               ),
-              child: Row(
+              child: Column(
                 children: [
-                  Icon(
-                    Icons.location_on,
-                    color: distance <= 100 ? Colors.green : Colors.orange,
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.location_on,
+                        color: distance <= 100 ? Colors.green : Colors.orange,
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Distance: ${_formatDistance(distance)}',
+                        style: TextStyle(
+                          color: distance <= 100 ? Colors.green : Colors.orange,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
                   ),
-                  const SizedBox(width: 8),
-                  Text(
-                    'Distance: ${_formatDistance(distance)}',
-                    style: TextStyle(
-                      color: distance <= 100 ? Colors.green : Colors.orange,
-                      fontWeight: FontWeight.w500,
+                  if (_currentPosition != null) ...[
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.gps_fixed,
+                          size: 16,
+                          color: Colors.grey[600],
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'Location: ${_currentPosition!.latitude.toStringAsFixed(6)}, ${_currentPosition!.longitude.toStringAsFixed(6)}',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.grey[600],
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
-                  ),
+                    const SizedBox(height: 4),
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.gps_fixed,
+                          size: 16,
+                          color: Colors.grey[600],
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Accuracy: ${_currentPosition!.accuracy.toStringAsFixed(1)}m',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.grey[600],
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.gps_fixed,
+                          size: 16,
+                          color: Colors.green,
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          'GPS Ready - Tap refresh to update',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.green,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
                 ],
               ),
             ),

@@ -1,0 +1,34 @@
+// ===========================================
+// iOS API KEYS CONFIGURATION TEMPLATE
+// ===========================================
+// 📋 Copy this file to ApiKeys.xcconfig and fill in your actual values
+// ⚠️  NEVER commit ApiKeys.xcconfig to version control!
+
+// ===========================================
+// GOOGLE MAPS CONFIGURATION
+// ===========================================
+// Get your API keys from: https://console.cloud.google.com/
+
+// iOS Google Maps API Key
+GOOGLE_MAPS_API_KEY_IOS = your_ios_api_key_here
+
+// Google Maps Map ID for advanced features
+GOOGLE_MAPS_MAP_ID_IOS = your_ios_map_id_here
+
+// ===========================================
+// ADDITIONAL API KEYS (if needed)
+// ===========================================
+// Firebase configuration
+// FIREBASE_API_KEY = your_firebase_api_key_here
+// FIREBASE_PROJECT_ID = your_firebase_project_id_here
+
+// Other third-party services
+// STRIPE_PUBLISHABLE_KEY = your_stripe_key_here
+// SENDGRID_API_KEY = your_sendgrid_key_here
+
+// ===========================================
+// DEVELOPMENT SETTINGS
+// ===========================================
+// Environment configuration
+ENVIRONMENT = development
+DEBUG_MODE = true

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../services/language_service.dart';
 import 'package:flutter/services.dart';
 import 'package:stockira/screens/dashboard/index.dart';
 import 'package:stockira/screens/url_setting/index.dart';
@@ -437,7 +438,7 @@ class _AuthScreenState extends State<AuthScreen> {
         });
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: const Text('Password berhasil direset, silakan login.'),
+            content: Text(LanguageService.passwordResetSuccess),
             backgroundColor: Colors.green,
           ),
         );
@@ -566,7 +567,7 @@ class _AuthScreenState extends State<AuthScreen> {
             child: TextButton(
               onPressed: _isLoading ? null : _goToForgotPassword,
               style: TextButton.styleFrom(foregroundColor: theme),
-              child: const Text('Forgot Password?'),
+              child: Text(LanguageService.forgotPassword),
             ),
           ),
           const SizedBox(height: 4),
@@ -712,7 +713,7 @@ class _AuthScreenState extends State<AuthScreen> {
         TextButton.icon(
           onPressed: _isLoading ? null : _backToLogin,
           icon: const Icon(Icons.arrow_back, size: 18),
-          label: const Text('Kembali ke Login'),
+          label: Text(LanguageService.backToLogin),
           style: TextButton.styleFrom(foregroundColor: theme),
         ),
       ],
@@ -867,7 +868,7 @@ class _AuthScreenState extends State<AuthScreen> {
         TextButton.icon(
           onPressed: _isLoading ? null : _backToLogin,
           icon: const Icon(Icons.arrow_back, size: 18),
-          label: const Text('Kembali ke Login'),
+          label: Text(LanguageService.backToLogin),
           style: TextButton.styleFrom(foregroundColor: theme),
         ),
       ],
@@ -962,7 +963,7 @@ class _AuthScreenState extends State<AuthScreen> {
         TextButton.icon(
           onPressed: _isLoading ? null : _backToLogin,
           icon: const Icon(Icons.arrow_back, size: 18),
-          label: const Text('Kembali ke Login'),
+          label: Text(LanguageService.backToLogin),
           style: TextButton.styleFrom(foregroundColor: theme),
         ),
       ],

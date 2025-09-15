@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:stockira/screens/attendance/index.dart';
@@ -14,7 +13,6 @@ import 'package:stockira/services/attendance_service.dart';
 import 'package:stockira/services/auth_service.dart';
 import 'package:stockira/services/itinerary_service.dart';
 import 'package:stockira/services/maps_service.dart';
-import 'package:stockira/services/report_completion_service.dart';
 import 'package:stockira/config/maps_config.dart';
 import 'package:stockira/models/attendance_record.dart';
 import 'package:stockira/models/itinerary.dart';
@@ -22,10 +20,10 @@ import 'package:stockira/widgets/unified_timeline_widget.dart';
 import 'package:stockira/widgets/realtime_timer_widget.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import '../../services/settings_service.dart';
-import '../../services/language_service.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+import 'package:image_picker/image_picker.dart';
+import 'dart:io';
 
 class Env {
   static String get baseUrl => dotenv.env['BASE_URL'] ?? '';
@@ -493,9 +491,7 @@ class Employee {
 }
 
 class DashboardScreen extends StatefulWidget {
-  final VoidCallback? onThemeChanged;
-  
-  const DashboardScreen({super.key, this.onThemeChanged});
+  const DashboardScreen({super.key});
 
   @override
   State<DashboardScreen> createState() => _DashboardScreenState();
@@ -526,11 +522,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
   DateTime? filterEndDate;
   String? filterStatus;
 
-  // Settings state
-  bool _notificationEnabled = true;
-  bool _darkModeEnabled = false;
-  String _currentLanguage = 'en';
-
   // Profile data
   String? name;
   String? profileEmail;
@@ -552,7 +543,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
     _loadTodayRecord();
     _loadProfile();
     _loadItineraryCount();
-    _loadSettings();
     _screens = [
       DashboardHome(
         onCheckIn: _handleCheckIn,
@@ -572,7 +562,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         itineraryList: itineraryList,
         todayRecord: todayRecord,
       ),
-      Center(child: Text(LanguageService.payslip, style: const TextStyle(fontSize: 24))),
+      Center(child: Text('Payslip', style: TextStyle(fontSize: 24))),
       ActivityScreen(), // Remove activities parameter, will handle filtering internally
     ];
   }
@@ -634,26 +624,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
         isCheckedIn = record?.isCheckedIn ?? false;
       });
       
-      // Save today's record to local storage for activity screen
-      if (record != null) {
-        try {
-          final prefs = await SharedPreferences.getInstance();
-          final recordData = {
-            'storeId': record.storeId,
-            'storeName': record.storeName,
-            'checkInTime': record.checkInTime?.toIso8601String(),
-            'checkOutTime': record.checkOutTime?.toIso8601String(),
-            'isCheckedIn': record.isCheckedIn,
-            'date': record.date.toIso8601String(),
-          };
-          
-          await prefs.setString('today_attendance_record', jsonEncode(recordData));
-          print('💾 Saved today record to local storage: store ${record.storeId}, checkIn=${record.checkInTime}, checkOut=${record.checkOutTime}');
-        } catch (e) {
-          print('❌ Error saving today record to local storage: $e');
-        }
-      }
-      
       print('🎯 State updated - isCheckedIn: $isCheckedIn');
       print('🏪 State updated - store: ${todayRecord?.storeName}');
     } catch (e) {
@@ -674,43 +644,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
     });
 
     print('Profile loaded: $name, $profileEmail, $profilePosition');
-  }
-
-  Future<void> _loadSettings() async {
-    final settings = await SettingsService.getAllSettings();
-    setState(() {
-      _notificationEnabled = settings['notification'] as bool;
-      _darkModeEnabled = settings['darkMode'] as bool;
-      _currentLanguage = settings['language'] as String;
-    });
-    // Initialize language service
-    await LanguageService.initialize();
-  }
-
-  Future<void> _updateNotificationSetting(bool enabled) async {
-    await SettingsService.setNotificationEnabled(enabled);
-    setState(() {
-      _notificationEnabled = enabled;
-    });
-  }
-
-  Future<void> _updateDarkModeSetting(bool enabled) async {
-    await SettingsService.setDarkModeEnabled(enabled);
-    setState(() {
-      _darkModeEnabled = enabled;
-    });
-    // Trigger theme change in main app
-    widget.onThemeChanged?.call();
-  }
-
-  Future<void> _updateLanguageSetting(String language) async {
-    await SettingsService.setLanguage(language);
-    await LanguageService.setLanguage(language);
-    setState(() {
-      _currentLanguage = language;
-    });
-    // Trigger rebuild to update all text
-    setState(() {});
   }
 
   Future<void> _loadItineraryCount() async {
@@ -788,7 +721,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             children: [
               Icon(Icons.person, color: theme),
               const SizedBox(width: 8, height: 20),
-              Text(LanguageService.profile),
+              const Text('Profile'),
             ],
           ),
           content: Column(
@@ -802,14 +735,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
               ),
               const SizedBox(height: 16),
               Text(
-                name ?? LanguageService.johnDoe,
+                name ?? 'John Doe',
                 style: const TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.bold,
                 ),
               ),
               const SizedBox(height: 4),
-              Text(profilePosition ?? LanguageService.employee),
+              Text(profilePosition ?? 'Employee'),
               const SizedBox(height: 4),
               Text(
                 profileEmail ?? 'john.doe@company.com',
@@ -817,7 +750,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               ),
               const SizedBox(height: 4),
               Text(
-                '${LanguageService.employeeId}: ${profileEmployeeId ?? LanguageService.emp001}',
+                'Employee ID: ${profileEmployeeId ?? 'EMP001'}',
                 style: TextStyle(color: Colors.grey[600]),
               ),
             ],
@@ -825,14 +758,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
           actions: [
             TextButton(
               onPressed: () => Navigator.of(context).pop(),
-              child: Text(LanguageService.close),
+              child: const Text('Close'),
             ),
             ElevatedButton(
               onPressed: () {
                 Navigator.of(context).pop();
                 // Navigate to edit profile screen
               },
-              child: Text(LanguageService.editProfile),
+              child: const Text('Edit Profile'),
             ),
           ],
         );
@@ -844,66 +777,48 @@ class _DashboardScreenState extends State<DashboardScreen> {
     showDialog(
       context: context,
       builder: (BuildContext context) {
-        return StatefulBuilder(
-          builder: (context, setDialogState) {
         return AlertDialog(
           title: Row(
             children: [
               Icon(Icons.settings, color: theme),
               const SizedBox(width: 8),
-                  Text(LanguageService.settings),
+              const Text('Settings'),
             ],
           ),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-                  // Notifications
               ListTile(
                 leading: const Icon(Icons.notifications),
-                    title: Text(LanguageService.notifications),
+                title: const Text('Notifications'),
                 trailing: Switch(
-                      value: _notificationEnabled,
+                  value: true,
                   onChanged: (value) {
-                        _updateNotificationSetting(value);
-                        setDialogState(() {});
+                    // Handle notification toggle
                   },
                 ),
               ),
-                  
-                  // Dark Mode
               ListTile(
                 leading: const Icon(Icons.dark_mode),
-                    title: Text(LanguageService.darkMode),
+                title: const Text('Dark Mode'),
                 trailing: Switch(
-                      value: _darkModeEnabled,
+                  value: false,
                   onChanged: (value) {
-                        _updateDarkModeSetting(value);
-                        setDialogState(() {});
+                    // Handle dark mode toggle
                   },
                 ),
               ),
-                  
-                  // Language
               ListTile(
                 leading: const Icon(Icons.language),
-                    title: Text(LanguageService.language),
-                    trailing: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(SettingsService.getLanguageDisplayName(_currentLanguage)),
-                        const SizedBox(width: 8),
-                        const Icon(Icons.arrow_forward_ios, size: 16),
-                      ],
-                    ),
+                title: const Text('Language'),
+                trailing: const Text('English'),
                 onTap: () {
-                      _showLanguageDialog(context, setDialogState);
+                  // Handle language selection
                 },
               ),
-                  
-                  // URL Settings
               ListTile(
                 leading: const Icon(Icons.link),
-                    title: Text(LanguageService.urlSettings),
+                title: const Text('URL Settings'),
                 trailing: const Icon(Icons.arrow_forward_ios, size: 16),
                 onTap: () {
                   Navigator.of(context).pop(); // Close settings dialog
@@ -919,51 +834,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           actions: [
             TextButton(
               onPressed: () => Navigator.of(context).pop(),
-                  child: Text(LanguageService.close),
-                ),
-              ],
-            );
-          },
-        );
-      },
-    );
-  }
-
-  void _showLanguageDialog(BuildContext context, StateSetter setDialogState) {
-    showDialog(
-      context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          title: Text(LanguageService.selectLanguage),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              ListTile(
-                leading: const Icon(Icons.language),
-                title: Text(LanguageService.english),
-                trailing: _currentLanguage == 'en' ? const Icon(Icons.check, color: Colors.green) : null,
-                onTap: () {
-                  _updateLanguageSetting('en');
-                  setDialogState(() {});
-                  Navigator.of(context).pop();
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.language),
-                title: Text(LanguageService.indonesian),
-                trailing: _currentLanguage == 'id' ? const Icon(Icons.check, color: Colors.green) : null,
-                onTap: () {
-                  _updateLanguageSetting('id');
-                  setDialogState(() {});
-                  Navigator.of(context).pop();
-                },
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: Text(LanguageService.cancel),
+              child: const Text('Close'),
             ),
           ],
         );
@@ -980,33 +851,33 @@ class _DashboardScreenState extends State<DashboardScreen> {
             children: [
               Icon(Icons.help_outline, color: theme),
               const SizedBox(width: 8),
-              Text(LanguageService.helpSupport),
+              const Text('Help & Support'),
             ],
           ),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                LanguageService.needHelp,
-                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
+              const Text(
+                'Need help? We\'re here for you!',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
               ),
               const SizedBox(height: 16),
               _buildHelpItem(
                 icon: Icons.phone,
-                title: LanguageService.contactSupport,
-                subtitle: LanguageService.callUs,
+                title: 'Contact Support',
+                subtitle: 'Call us at +1 (555) 123-4567',
               ),
               const SizedBox(height: 12),
               _buildHelpItem(
                 icon: Icons.email,
-                title: LanguageService.emailSupport,
+                title: 'Email Support',
                 subtitle: 'support@company.com',
               ),
               const SizedBox(height: 12),
               _buildHelpItem(
                 icon: Icons.chat,
-                title: LanguageService.liveChat,
+                title: 'Live Chat',
                 subtitle: 'Available 24/7',
               ),
             ],
@@ -1014,7 +885,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           actions: [
             TextButton(
               onPressed: () => Navigator.of(context).pop(),
-              child: Text(LanguageService.close),
+              child: const Text('Close'),
             ),
           ],
         );
@@ -1056,17 +927,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
             children: [
               Icon(Icons.logout, color: theme),
               const SizedBox(width: 8),
-              Text(LanguageService.logout),
+              const Text('Logout'),
             ],
           ),
-          content: Text(
-            LanguageService.areYouSureLogout,
-            style: const TextStyle(fontSize: 16),
+          content: const Text(
+            'Are you sure you want to logout?',
+            style: TextStyle(fontSize: 16),
           ),
           actions: [
             TextButton(
               onPressed: () => Navigator.of(context).pop(),
-              child: Text(LanguageService.cancel),
+              child: const Text('Cancel'),
             ),
             ElevatedButton(
               onPressed: () {
@@ -1077,7 +948,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 backgroundColor: theme,
                 foregroundColor: Colors.white,
               ),
-              child: Text(LanguageService.logout),
+              child: const Text('Logout'),
             ),
           ],
         );
@@ -1095,12 +966,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
       context: context,
       barrierDismissible: false,
       builder: (BuildContext context) {
-        return AlertDialog(
+        return const AlertDialog(
           content: Row(
             children: [
-              const CircularProgressIndicator(),
-              const SizedBox(width: 20),
-              Text(LanguageService.loggingOut),
+              CircularProgressIndicator(),
+              SizedBox(width: 20),
+              Text('Logging out...'),
             ],
           ),
         );
@@ -1151,8 +1022,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
       // Show success message
       scaffoldMessenger.showSnackBar(
-        SnackBar(
-          content: Text(LanguageService.successfullyLoggedOut),
+        const SnackBar(
+          content: Text('Successfully logged out'),
           backgroundColor: Colors.green,
         ),
       );
@@ -1165,7 +1036,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       // Show error message
       scaffoldMessenger.showSnackBar(
         SnackBar(
-          content: Text('${LanguageService.logoutFailed}: ${e.toString()}'),
+          content: Text('Logout failed: ${e.toString()}'),
           backgroundColor: Colors.red,
         ),
       );
@@ -1209,29 +1080,24 @@ class _DashboardScreenState extends State<DashboardScreen> {
         // Show loading indicator
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
+            const SnackBar(
               content: Row(
                 children: [
-                  const CircularProgressIndicator(
+                  CircularProgressIndicator(
                     valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
                   ),
-                  const SizedBox(width: 16),
-                  Text(LanguageService.updatingDashboard),
+                  SizedBox(width: 16),
+                  Text('Updating dashboard...'),
                 ],
               ),
               backgroundColor: Colors.green,
-              duration: const Duration(seconds: 2),
+              duration: Duration(seconds: 2),
             ),
           );
         }
         
         // Use robust reload method
         await _forceReloadData();
-        
-        // Save attendance data to local storage - temporarily disabled
-        // if (todayRecord != null) {
-        //   await _saveAttendanceData(todayRecord!, 'checkin');
-        // }
         
         // Add to activities with current time
         final now = DateTime.now();
@@ -1261,7 +1127,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       print('❌ Error during check-in: $e');
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('${LanguageService.errorDuringCheckIn}: $e'),
+          content: Text('Error during check-in: $e'),
           backgroundColor: Colors.red,
         ),
       );
@@ -1327,8 +1193,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
           todayRecord!.checkInTime == null) {
         print('❌ Invalid checkout attempt - not currently checked in');
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(LanguageService.notCurrentlyCheckedIn),
+          const SnackBar(
+            content: Text('You are not currently checked in'),
             backgroundColor: Colors.orange,
           ),
         );
@@ -1349,11 +1215,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
         // Checkout successful, reload data
         await _loadTodayRecord();
 
-        // Save attendance data to local storage - temporarily disabled
-        // if (todayRecord != null) {
-        //   await _saveAttendanceData(todayRecord!, 'checkout');
-        // }
-
         final now = DateTime.now();
         final timeString = _formatTimeForActivity(now);
 
@@ -1373,13 +1234,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
         _saveActivitiesToStorage();
 
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(LanguageService.successfullyCheckedOut)),
+          const SnackBar(content: Text('Successfully checked out')),
         );
       }
     } catch (e) {
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text('${LanguageService.errorCheckingOut}: $e')));
+      ).showSnackBar(SnackBar(content: Text('Error checking out: $e')));
     }
   }
 
@@ -1398,13 +1259,306 @@ class _DashboardScreenState extends State<DashboardScreen> {
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
-          title: Text(LanguageService.filterAttendance),
+          title: const Text('Filter Attendance'),
+          contentPadding: const EdgeInsets.fromLTRB(24.0, 20.0, 24.0, 24.0),
+          content: SizedBox(
+            width: MediaQuery.of(context).size.width * 0.8,
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                maxHeight: MediaQuery.of(context).size.height * 0.6,
+              ),
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const SizedBox(height: 16),
+
+                    // Image capture section
+                    Container(
+                      width: double.infinity,
+                      height: 200,
+                      decoration: BoxDecoration(
+                        border: Border.all(color: Colors.grey),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: selectedImage == null
+                          ? Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                const Icon(
+                                  Icons.camera_alt,
+                                  size: 48,
+                                  color: Colors.grey,
+                                ),
+                                const SizedBox(height: 8),
+                                const Text('No image selected'),
+                                const SizedBox(height: 8),
+                                Column(
+                                  children: [
+                                    ElevatedButton.icon(
+                                      onPressed: () async {
+                                        try {
+                                          final image = await picker.pickImage(
+                                            source: ImageSource.camera,
+                                          );
+                                          if (image != null) {
+                                            setState(() {
+                                              selectedImage = image;
+                                            });
+                                          }
+                                        } catch (e) {
+                                          print('Error picking image: $e');
+                                          if (context.mounted) {
+                                            ScaffoldMessenger.of(
+                                              context,
+                                            ).showSnackBar(
+                                              SnackBar(
+                                                content: Text(
+                                                  'Camera not available: $e',
+                                                ),
+                                                backgroundColor: Colors.red,
+                                              ),
+                                            );
+                                          }
+                                        }
+                                      },
+                                      icon: const Icon(Icons.camera_alt),
+                                      label: const Text('Take Photo'),
+                                    ),
+                                    const SizedBox(height: 8),
+                                    ElevatedButton.icon(
+                                      onPressed: () async {
+                                        try {
+                                          final image = await picker.pickImage(
+                                            source: ImageSource.gallery,
+                                          );
+                                          if (image != null) {
+                                            setState(() {
+                                              selectedImage = image;
+                                            });
+                                          }
+                                        } catch (e) {
+                                          print('Error picking image: $e');
+                                          if (context.mounted) {
+                                            ScaffoldMessenger.of(
+                                              context,
+                                            ).showSnackBar(
+                                              SnackBar(
+                                                content: Text(
+                                                  'Gallery not available: $e',
+                                                ),
+                                                backgroundColor: Colors.red,
+                                              ),
+                                            );
+                                          }
+                                        }
+                                      },
+                                      icon: const Icon(Icons.photo_library),
+                                      label: const Text('From Gallery'),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            )
+                          : ClipRRect(
+                              borderRadius: BorderRadius.circular(8),
+                              child: Stack(
+                                fit: StackFit.expand,
+                                children: [
+                                  Image.file(
+                                    File(selectedImage!.path),
+                                    fit: BoxFit.cover,
+                                    errorBuilder: (context, error, stackTrace) {
+                                      return const Center(
+                                        child: Text(
+                                          'Failed to load image',
+                                          style: TextStyle(color: Colors.red),
+                                        ),
+                                      );
+                                    },
+                                  ),
+                                  Positioned(
+                                    bottom: 8,
+                                    left: 8,
+                                    right: 8,
+                                    child: Wrap(
+                                      spacing: 8,
+                                      runSpacing: 8,
+                                      alignment: WrapAlignment.spaceEvenly,
+                                      children: [
+                                        ElevatedButton.icon(
+                                          style: ElevatedButton.styleFrom(
+                                            backgroundColor: Colors.white
+                                                .withOpacity(0.9),
+                                            foregroundColor: Colors.black,
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 8,
+                                              vertical: 4,
+                                            ),
+                                          ),
+                                          onPressed: () async {
+                                            try {
+                                              final image = await picker
+                                                  .pickImage(
+                                                    source: ImageSource.camera,
+                                                  );
+                                              if (image != null) {
+                                                setState(() {
+                                                  selectedImage = image;
+                                                });
+                                              }
+                                            } catch (e) {
+                                              print('Error picking image: $e');
+                                              if (context.mounted) {
+                                                ScaffoldMessenger.of(
+                                                  context,
+                                                ).showSnackBar(
+                                                  SnackBar(
+                                                    content: Text(
+                                                      'Camera not available: $e',
+                                                    ),
+                                                    backgroundColor: Colors.red,
+                                                  ),
+                                                );
+                                              }
+                                            }
+                                          },
+                                          icon: const Icon(
+                                            Icons.camera_alt,
+                                            size: 16,
+                                          ),
+                                          label: const Text('Retake'),
+                                        ),
+                                        ElevatedButton.icon(
+                                          style: ElevatedButton.styleFrom(
+                                            backgroundColor: Colors.white
+                                                .withOpacity(0.9),
+                                            foregroundColor: Colors.black,
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 8,
+                                              vertical: 4,
+                                            ),
+                                          ),
+                                          onPressed: () async {
+                                            try {
+                                              final image = await picker
+                                                  .pickImage(
+                                                    source: ImageSource.gallery,
+                                                  );
+                                              if (image != null) {
+                                                setState(() {
+                                                  selectedImage = image;
+                                                });
+                                              }
+                                            } catch (e) {
+                                              print('Error picking image: $e');
+                                              if (context.mounted) {
+                                                ScaffoldMessenger.of(
+                                                  context,
+                                                ).showSnackBar(
+                                                  SnackBar(
+                                                    content: Text(
+                                                      'Gallery not available: $e',
+                                                    ),
+                                                    backgroundColor: Colors.red,
+                                                  ),
+                                                );
+                                              }
+                                            }
+                                          },
+                                          icon: const Icon(
+                                            Icons.photo_library,
+                                            size: 16,
+                                          ),
+                                          label: const Text('Gallery'),
+                                        ),
+                                        ElevatedButton.icon(
+                                          style: ElevatedButton.styleFrom(
+                                            backgroundColor: Colors.white
+                                                .withOpacity(0.9),
+                                            foregroundColor: Colors.red,
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 8,
+                                              vertical: 4,
+                                            ),
+                                          ),
+                                          onPressed: () {
+                                            setState(() {
+                                              selectedImage = null;
+                                            });
+                                          },
+                                          icon: const Icon(
+                                            Icons.delete,
+                                            size: 16,
+                                          ),
+                                          label: const Text('Remove'),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                    ),
+
+                    const SizedBox(height: 16),
+
+                    // Note field
+                    TextField(
+                      controller: noteController,
+                      decoration: const InputDecoration(
+                        labelText: 'Note (Optional)',
+                        border: OutlineInputBorder(),
+                        hintText: 'Add any additional notes...',
+                      ),
+                      maxLines: 3,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                if (selectedImage == null) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Please select an image first'),
+                      backgroundColor: Colors.orange,
+                    ),
+                  );
+                  return;
+                }
+
+                Navigator.of(
+                  context,
+                ).pop({'image': selectedImage!, 'note': noteController.text});
+              },
+              child: const Text('Check Out'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showFiltersDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Filter Attendance'),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               // Date range picker
               ListTile(
-                title: Text(LanguageService.startDate),
+                title: const Text('Start Date'),
                 subtitle: Text(
                   filterStartDate?.toString().split(' ')[0] ?? 'Select date',
                 ),
@@ -1423,7 +1577,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 },
               ),
               ListTile(
-                title: Text(LanguageService.endDate),
+                title: const Text('End Date'),
                 subtitle: Text(
                   filterEndDate?.toString().split(' ')[0] ?? 'Select date',
                 ),
@@ -1445,16 +1599,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
               DropdownButtonFormField<String>(
                 value: filterStatus,
                 decoration: const InputDecoration(labelText: 'Status'),
-                items: [
-                  DropdownMenuItem(value: null, child: Text(LanguageService.all)),
-                  DropdownMenuItem(value: 'pending', child: Text(LanguageService.pending)),
+                items: const [
+                  DropdownMenuItem(value: null, child: Text('All')),
+                  DropdownMenuItem(value: 'pending', child: Text('Pending')),
                   DropdownMenuItem(
                     value: 'checked_in',
-                    child: Text(LanguageService.checkedIn),
+                    child: Text('Checked In'),
                   ),
                   DropdownMenuItem(
                     value: 'completed',
-                    child: Text(LanguageService.completed),
+                    child: Text('Completed'),
                   ),
                 ],
                 onChanged: (value) {
@@ -1474,18 +1628,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   filterStatus = null;
                 });
               },
-              child: Text(LanguageService.clear),
+              child: const Text('Clear'),
             ),
             TextButton(
               onPressed: () => Navigator.of(context).pop(),
-              child: Text(LanguageService.cancel),
+              child: const Text('Cancel'),
             ),
             ElevatedButton(
               onPressed: () {
                 setState(() {});
                 Navigator.of(context).pop();
               },
-              child: Text(LanguageService.apply),
+              child: const Text('Apply'),
             ),
           ],
         ),
@@ -1499,18 +1653,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
     // Show loading
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
+        const SnackBar(
           content: Row(
             children: [
-              const CircularProgressIndicator(
+              CircularProgressIndicator(
                 valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
               ),
-              const SizedBox(width: 16),
-              Text(LanguageService.refreshingData),
+              SizedBox(width: 16),
+              Text('Refreshing data...'),
             ],
           ),
-          backgroundColor: const Color.fromARGB(255, 41, 189, 206),
-          duration: const Duration(seconds: 2),
+          backgroundColor: Color.fromARGB(255, 41, 189, 206),
+          duration: Duration(seconds: 2),
         ),
       );
     }
@@ -1934,18 +2088,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                 icon: Icons.assessment,
                                 label: 'Reports',
                                 color: const Color(0xFF29BDCE),
-                                onTap: () async {
+                                onTap: () {
                                   Navigator.of(context).pop();
-                                  final result = await Navigator.of(context).push<bool>(
+                                  Navigator.of(context).push(
                                     MaterialPageRoute(
                                       builder: (_) => const ReportsScreen(),
                                     ),
                                   );
-                                  // Refresh todo completion status if report was submitted
-                                  if (result == true) {
-                                    print('🔄 Report submitted, refreshing todo completion status...');
-                                    setState(() {});
-                                  }
                                 },
                               ),
                               _buildFeatureIcon(
@@ -2059,23 +2208,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
           if (index == 0) {
             _loadItineraryCount();
           }
-          // Refresh todo completion status when switching to activity tab
-          if (index == 2) {
-            // ActivityScreen will handle its own refresh
-            setState(() {});
-          }
         },
         selectedItemColor: const Color.fromARGB(255, 41, 189, 206),
         unselectedItemColor: Colors.grey,
-        items: [
-          BottomNavigationBarItem(icon: const Icon(Icons.home), label: LanguageService.home),
+        items: const [
+          BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Home'),
           BottomNavigationBarItem(
-            icon: const Icon(Icons.receipt_long),
-            label: LanguageService.payslip,
+            icon: Icon(Icons.receipt_long),
+            label: 'Payslip',
           ),
           BottomNavigationBarItem(
-            icon: const Icon(Icons.list_alt),
-            label: LanguageService.activity,
+            icon: Icon(Icons.list_alt),
+            label: 'Activity',
           ),
         ],
       ),
@@ -2360,29 +2504,29 @@ class DashboardHome extends StatelessWidget {
                               }
                             },
                             itemBuilder: (BuildContext context) => [
-                              PopupMenuItem<String>(
+                              const PopupMenuItem<String>(
                                 value: 'profile',
                                 child: Row(
                                   children: [
-                                    const Icon(
+                                    Icon(
                                       Icons.person,
                                       color: Color.fromARGB(255, 41, 189, 206),
                                     ),
-                                    const SizedBox(width: 12),
-                                    Text(LanguageService.profile),
+                                    SizedBox(width: 12),
+                                    Text('Profile'),
                                   ],
                                 ),
                               ),
-                              PopupMenuItem<String>(
+                              const PopupMenuItem<String>(
                                 value: 'settings',
                                 child: Row(
                                   children: [
-                                    const Icon(
+                                    Icon(
                                       Icons.settings,
                                       color: Color.fromARGB(255, 41, 189, 206),
                                     ),
-                                    const SizedBox(width: 12),
-                                    Text(LanguageService.settings),
+                                    SizedBox(width: 12),
+                                    Text('Settings'),
                                   ],
                                 ),
                               ),
@@ -2433,16 +2577,16 @@ class DashboardHome extends StatelessWidget {
                                 ),
                               ),
                               const PopupMenuDivider(),
-                              PopupMenuItem<String>(
+                              const PopupMenuItem<String>(
                                 value: 'logout',
                                 child: Row(
                                   children: [
-                                    const Icon(
+                                    Icon(
                                       Icons.logout,
                                       color: Color.fromARGB(255, 41, 189, 206),
                                     ),
-                                    const SizedBox(width: 12),
-                                    Text(LanguageService.logout),
+                                    SizedBox(width: 12),
+                                    Text('Logout'),
                                   ],
                                 ),
                               ),
@@ -2949,26 +3093,6 @@ class DashboardHome extends StatelessWidget {
       ),
     );
   }
-  
-  Future<void> _saveTodayRecordToStorage(AttendanceRecord record) async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final recordData = {
-        'storeId': record.storeId,
-        'storeName': record.storeName,
-        'checkInTime': record.checkInTime?.toIso8601String(),
-        'checkOutTime': record.checkOutTime?.toIso8601String(),
-        'isCheckedIn': record.isCheckedIn,
-        'date': record.date.toIso8601String(),
-      };
-      
-      await prefs.setString('today_attendance_record', jsonEncode(recordData));
-      print('💾 Saved today record to local storage: store ${record.storeId}, checkIn=${record.checkInTime}, checkOut=${record.checkOutTime}');
-      
-    } catch (e) {
-      print('❌ Error saving today record to local storage: $e');
-    }
-  }
 }
 
 class ActivityScreen extends StatefulWidget {
@@ -2987,35 +3111,36 @@ class _ActivityScreenState extends State<ActivityScreen> {
 
   // User role detection
   String? userRole; // 'SPG' or 'MD'
-  int totalTasks = 0; // 10 for SPG, 11 for MD
+  int totalTasks = 0; // 12 for SPG, 10 for MD
 
   // Task types based on role
   List<String> get taskTypes {
     if (userRole == 'SPG') {
       return [
-        'Sales',
         'OOS (Out of Stock)',
         'Expired Date',
-        'Survey',
         'Reguler Display',
         'Price Principal',
         'Price Competitor',
-        'Promo Tracking',
         'Competitor Activity',
+        'Promo Tracking',
+        'Sales',
+        'Survey',
         'Attendance',
+        'Display Check',
+        'Customer Feedback',
       ];
     } else { // MD
       return [
-        'Product Focus',
         'OOS (Out of Stock)',
         'Expired Date',
-        'Display',
+        'Reguler Display',
         'Price Principal',
         'Price Competitor',
-        'Promo Tracking',
         'Competitor Activity',
+        'Promo Tracking',
+        'Sales',
         'Survey',
-        'Product Belgian Berry',
         'Attendance',
       ];
     }
@@ -3034,9 +3159,6 @@ class _ActivityScreenState extends State<ActivityScreen> {
   
   // Expanded stores state
   Map<String, bool> _expandedStores = {};
-  
-  // Timer for real-time duration updates
-  Timer? _durationTimer;
 
   @override
   void initState() {
@@ -3045,28 +3167,6 @@ class _ActivityScreenState extends State<ActivityScreen> {
     _loadItinerariesForDate(selectedDate);
     _loadAttendanceRecords();
     _loadTodoItems();
-    // Refresh todo completion status on init
-    _refreshTodoCompletionStatus();
-    
-    // Start timer for real-time duration updates
-    _startDurationTimer();
-  }
-  
-  @override
-  void dispose() {
-    _durationTimer?.cancel();
-    super.dispose();
-  }
-  
-  // Start timer for real-time duration updates
-  void _startDurationTimer() {
-    _durationTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      if (mounted) {
-        setState(() {
-          // This will trigger rebuild and update duration display
-        });
-      }
-    });
   }
 
   Future<void> _loadUserRole() async {
@@ -3075,13 +3175,13 @@ class _ActivityScreenState extends State<ActivityScreen> {
       final role = prefs.getString('user_position') ?? 'SPG';
       setState(() {
         userRole = role.contains('MD') ? 'MD' : 'SPG';
-        totalTasks = userRole == 'SPG' ? 10 : 11;
+        totalTasks = userRole == 'SPG' ? 12 : 10;
       });
     } catch (e) {
       print('Error loading user role: $e');
       setState(() {
         userRole = 'SPG';
-        totalTasks = 10;
+        totalTasks = 12;
       });
     }
   }
@@ -3098,24 +3198,19 @@ class _ActivityScreenState extends State<ActivityScreen> {
       print('Loading itineraries for date: $dateStr');
       final response = await ItineraryService.getItineraryByDate(dateStr);
 
-      if (response.success) {
-        setState(() {
+      setState(() {
+        if (response.success) {
           itineraries = response.data;
           print('Loaded ${itineraries.length} itineraries');
           _checkItineraryCompletion();
-          isLoading = false;
-        });
-        // Generate todos after loading itineraries
-        await _generateDefaultTodos();
-        // Refresh todo completion status to check for completed reports
-        await _refreshTodoCompletionStatus();
-      } else {
-        setState(() {
+          // Generate todos after loading itineraries
+          _generateDefaultTodos();
+        } else {
           errorMessage = response.message;
           itineraries = [];
-          isLoading = false;
-        });
-      }
+        }
+        isLoading = false;
+      });
     } catch (e) {
       setState(() {
         errorMessage = 'Failed to load itineraries: ${e.toString()}';
@@ -3131,25 +3226,15 @@ class _ActivityScreenState extends State<ActivityScreen> {
       setState(() {
         attendanceRecords = response;
         _checkItineraryCompletion();
+        // Auto-refresh todo completion status
+        _refreshTodoCompletionStatus();
       });
-      
-      // Debug: Print attendance records
-      print('📋 Loaded ${attendanceRecords.length} attendance records');
-      for (var record in attendanceRecords) {
-        print('📋 Record date: ${record.date}, details: ${record.details.length}');
-        for (var detail in record.details) {
-          print('📋   Store ${detail.storeId}: checkIn=${detail.checkInTime}, checkOut=${detail.checkOutTime}');
-        }
-      }
-      
-      // Auto-refresh todo completion status
-      await _refreshTodoCompletionStatus();
     } catch (e) {
       print('Error loading attendance records: $e');
     }
   }
 
-  Future<void> _refreshTodoCompletionStatus() async {
+  void _refreshTodoCompletionStatus() {
     final dateStr = '${selectedDate.year.toString().padLeft(4, '0')}-${selectedDate.month.toString().padLeft(2, '0')}-${selectedDate.day.toString().padLeft(2, '0')}';
     
     bool hasChanges = false;
@@ -3160,20 +3245,13 @@ class _ActivityScreenState extends State<ActivityScreen> {
       final currentCompleted = todo['completed'] == true;
       
       // Check if should be auto-completed
-      final shouldBeCompleted = await _checkAutoCompletion(storeId, taskName, dateStr);
+      final shouldBeCompleted = _checkAutoCompletion(storeId, taskName, dateStr);
       
       if (currentCompleted != shouldBeCompleted) {
         todoItems[i]['completed'] = shouldBeCompleted;
         todoItems[i]['autoCompleted'] = shouldBeCompleted;
         if (shouldBeCompleted) {
           todoItems[i]['completedTime'] = DateTime.now().toIso8601String();
-          // Log additional activity when task is completed
-          await _saveAdditionalActivityLog(
-            taskName,
-            todo['storeName'] as String? ?? 'Unknown Store',
-            storeId,
-            'completed',
-          );
         }
         hasChanges = true;
       }
@@ -3241,15 +3319,15 @@ class _ActivityScreenState extends State<ActivityScreen> {
         });
       } else {
         // Generate default todos if none exist
-        await _generateDefaultTodos();
+        _generateDefaultTodos();
       }
     } catch (e) {
       print('Error loading todo items: $e');
-      await _generateDefaultTodos();
+      _generateDefaultTodos();
     }
   }
 
-  Future<void> _generateDefaultTodos() async {
+  void _generateDefaultTodos() {
     if (userRole == null || totalTasks == 0) return;
     
     final dateStr = '${selectedDate.year.toString().padLeft(4, '0')}-${selectedDate.month.toString().padLeft(2, '0')}-${selectedDate.day.toString().padLeft(2, '0')}';
@@ -3262,7 +3340,7 @@ class _ActivityScreenState extends State<ActivityScreen> {
         print('Generating todos for store: ${store.name} (ID: ${store.id})');
         for (var task in taskTypes) {
           // Check if this task is already completed based on attendance and reports
-          final isAutoCompleted = await _checkAutoCompletion(store.id, task, dateStr);
+          final isAutoCompleted = _checkAutoCompletion(store.id, task, dateStr);
           
           newTodos.add({
             'id': DateTime.now().millisecondsSinceEpoch + task.hashCode + store.id,
@@ -3288,28 +3366,8 @@ class _ActivityScreenState extends State<ActivityScreen> {
     _updateProgress();
   }
 
-  Future<bool> _checkAutoCompletion(int storeId, String taskName, String dateStr) async {
-    // Special handling for Attendance task
-    if (taskName == 'Attendance') {
-      return await _checkAttendanceCompletion(storeId, dateStr);
-    }
-    
-    // Check if specific report has been completed
-    String reportType = _getReportTypeFromTask(taskName);
-    if (reportType.isNotEmpty) {
-      final isReportCompleted = await ReportCompletionService.isReportCompleted(
-        storeId: storeId,
-        reportType: reportType,
-        date: dateStr,
-      );
-      
-      if (isReportCompleted) {
-        print('✅ Auto-completion: $taskName completed for store $storeId on $dateStr');
-        return true;
-      }
-    }
-    
-    // For other tasks, check if user has checked in/out at this store
+  bool _checkAutoCompletion(int storeId, String taskName, String dateStr) {
+    // Check if user has checked in/out at this store
     final hasAttendance = attendanceRecords.any((record) {
       final recordDate = '${record.date.year.toString().padLeft(4, '0')}-${record.date.month.toString().padLeft(2, '0')}-${record.date.day.toString().padLeft(2, '0')}';
       if (recordDate != dateStr) return false;
@@ -3317,71 +3375,9 @@ class _ActivityScreenState extends State<ActivityScreen> {
       return record.details.any((detail) => detail.storeId == storeId);
     });
     
+    // For now, auto-complete based on attendance
+    // In real implementation, this would check actual report submissions
     return hasAttendance;
-  }
-  
-  Future<bool> _checkAttendanceCompletion(int storeId, String dateStr) async {
-    // Use todayRecord from dashboard to check attendance status
-    try {
-      // Get today's date string
-      final today = DateTime.now();
-      final todayStr = '${today.year.toString().padLeft(4, '0')}-${today.month.toString().padLeft(2, '0')}-${today.day.toString().padLeft(2, '0')}';
-      
-      // Only check for today's attendance
-      if (dateStr != todayStr) {
-        print('📋 Not checking attendance for non-today date: $dateStr');
-        return false;
-      }
-      
-      // Check if we have today's record from dashboard
-      // This is a simple approach - we'll check if user is currently checked in
-      // and if the store ID matches
-      final prefs = await SharedPreferences.getInstance();
-      final todayRecordData = prefs.getString('today_attendance_record');
-      
-      if (todayRecordData != null) {
-        final data = jsonDecode(todayRecordData);
-        final recordStoreId = data['storeId'] as int? ?? 0;
-        final hasCheckIn = data['checkInTime'] != null;
-        final hasCheckOut = data['checkOutTime'] != null;
-        
-        if (recordStoreId == storeId) {
-          print('📋 Dashboard attendance check for store $storeId: checkIn=$hasCheckIn, checkOut=$hasCheckOut');
-          return hasCheckIn && hasCheckOut;
-        }
-      }
-      
-      print('📋 No dashboard attendance record found for store $storeId on $dateStr');
-      return false;
-    } catch (e) {
-      print('📋 Error checking dashboard attendance: $e');
-      return false;
-    }
-  }
-  
-  String _getReportTypeFromTask(String taskName) {
-    // Map task names to report types
-    final taskToReportMap = {
-      'OOS': 'out_of_stock',
-      'OOS (Out of Stock)': 'out_of_stock',
-      'Out of Stock': 'out_of_stock',
-      'Price Principal': 'price_principal',
-      'Price Competitor': 'price_competitor',
-      'Promo Tracking': 'promo_tracking',
-      'Competitor Activity': 'competitor_activity',
-      'Survey': 'survey',
-      'Product Focus': 'product_focus',
-      'Regular Display': 'display_report',
-      'Reguler Display': 'display_report',
-      'Display': 'display_report',
-      'Product Belgian Berry': 'product_belgian_berry',
-      'Expired Date': 'expired_date',
-      'Display Check': 'display_report',
-      'Sales': 'sales',
-      'Customer Feedback': 'customer_feedback',
-    };
-    
-    return taskToReportMap[taskName] ?? '';
   }
 
   Future<void> _saveTodoItems() async {
@@ -3391,54 +3387,6 @@ class _ActivityScreenState extends State<ActivityScreen> {
       await prefs.setString('todo_items_$dateStr', json.encode(todoItems));
     } catch (e) {
       print('Error saving todo items: $e');
-    }
-  }
-
-  // Save additional activity log
-  Future<void> _saveAdditionalActivityLog(String taskName, String storeName, int storeId, String status) async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final dateStr = '${selectedDate.year.toString().padLeft(4, '0')}-${selectedDate.month.toString().padLeft(2, '0')}-${selectedDate.day.toString().padLeft(2, '0')}';
-      
-      // Get existing activity logs
-      final existingLogs = prefs.getString('additional_activity_logs_$dateStr') ?? '[]';
-      final List<dynamic> activityLogs = json.decode(existingLogs);
-      
-      // Add new activity log
-      final newLog = {
-        'id': DateTime.now().millisecondsSinceEpoch,
-        'taskName': taskName,
-        'storeName': storeName,
-        'storeId': storeId,
-        'status': status, // 'completed' or 'started'
-        'timestamp': DateTime.now().toIso8601String(),
-        'date': dateStr,
-      };
-      
-      activityLogs.add(newLog);
-      
-      // Save back to preferences
-      await prefs.setString('additional_activity_logs_$dateStr', json.encode(activityLogs));
-      
-      print('📝 Additional activity logged: $taskName - $status at ${newLog['timestamp']}');
-    } catch (e) {
-      print('Error saving additional activity log: $e');
-    }
-  }
-
-  // Get additional activity logs
-  Future<List<Map<String, dynamic>>> _getAdditionalActivityLogs() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final dateStr = '${selectedDate.year.toString().padLeft(4, '0')}-${selectedDate.month.toString().padLeft(2, '0')}-${selectedDate.day.toString().padLeft(2, '0')}';
-      
-      final logsData = prefs.getString('additional_activity_logs_$dateStr') ?? '[]';
-      final List<dynamic> logs = json.decode(logsData);
-      
-      return logs.cast<Map<String, dynamic>>();
-    } catch (e) {
-      print('Error getting additional activity logs: $e');
-      return [];
     }
   }
 
@@ -3569,62 +3517,6 @@ class _ActivityScreenState extends State<ActivityScreen> {
     return '$hours hours $minutes minutes';
   }
 
-  // Calculate duration from string times (for local storage data)
-  String _calculateDurationFromStrings(String? checkInTime, String? checkOutTime) {
-    if (checkInTime == null) return '0';
-    
-    try {
-      DateTime checkIn;
-      DateTime checkOut;
-      
-      // Parse check-in time
-      if (checkInTime.contains('T')) {
-        // ISO format: 2025-09-15T10:17:03.112158
-        checkIn = DateTime.parse(checkInTime);
-      } else if (checkInTime.contains(':')) {
-        // Time format: 10:17:03
-        final today = DateTime.now();
-        final checkInParts = checkInTime.split(':');
-        
-        checkIn = DateTime(today.year, today.month, today.day, 
-                          int.parse(checkInParts[0]), int.parse(checkInParts[1]));
-      } else {
-        return '0';
-      }
-      
-      // If checkOutTime is provided, use it; otherwise use current time (real-time duration)
-      if (checkOutTime != null) {
-        if (checkOutTime.contains('T')) {
-          checkOut = DateTime.parse(checkOutTime);
-        } else if (checkOutTime.contains(':')) {
-          final today = DateTime.now();
-          final checkOutParts = checkOutTime.split(':');
-          
-          checkOut = DateTime(today.year, today.month, today.day, 
-                             int.parse(checkOutParts[0]), int.parse(checkOutParts[1]));
-        } else {
-          checkOut = DateTime.now(); // Fallback to current time
-        }
-      } else {
-        // No check-out time, calculate duration from check-in to now (real-time)
-        checkOut = DateTime.now();
-      }
-      
-      final duration = checkOut.difference(checkIn);
-      final hours = duration.inHours;
-      final minutes = duration.inMinutes % 60;
-      
-      if (hours > 0) {
-        return '${hours}h ${minutes}m';
-      } else {
-        return '${minutes}m';
-      }
-    } catch (e) {
-      print('Error calculating duration: $e');
-      return '0';
-    }
-  }
-
   void _showDateFilterDialog() {
     showDialog(
       context: context,
@@ -3658,17 +3550,16 @@ class _ActivityScreenState extends State<ActivityScreen> {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
-              child: Text(LanguageService.cancel),
+              child: const Text('Cancel'),
             ),
             ElevatedButton(
-              onPressed: () async {
-                await _loadItinerariesForDate(selectedDate);
+              onPressed: () {
+                _loadItinerariesForDate(selectedDate);
                 _loadAttendanceRecords();
                 _loadTodoItems();
-                await _refreshTodoCompletionStatus();
                 Navigator.pop(context);
               },
-              child: Text(LanguageService.apply),
+              child: const Text('Apply'),
             ),
           ],
         ),
@@ -3765,10 +3656,7 @@ class _ActivityScreenState extends State<ActivityScreen> {
           ),
           IconButton(
             icon: const Icon(Icons.refresh, color: Colors.cyan),
-            onPressed: () async {
-              await _loadItinerariesForDate(selectedDate);
-              await _refreshTodoCompletionStatus();
-            },
+            onPressed: () => _loadItinerariesForDate(selectedDate),
             tooltip: 'Reload',
           ),
         ],
@@ -3910,9 +3798,9 @@ class _ActivityScreenState extends State<ActivityScreen> {
                   ? _buildErrorState(errorMessage!)
                   : getStoreVisits().isEmpty
                   ? _buildEmptyState()
-            : ListView.builder(
+                  : ListView.builder(
                       itemCount: getStoreVisits().length,
-                itemBuilder: (context, i) {
+                      itemBuilder: (context, i) {
                         final storeVisit = getStoreVisits()[i];
                         return _buildStoreVisitItem(context, storeVisit, i);
                       },
@@ -3979,10 +3867,7 @@ class _ActivityScreenState extends State<ActivityScreen> {
           ),
           const SizedBox(height: 16),
           ElevatedButton(
-            onPressed: () async {
-              await _loadItinerariesForDate(selectedDate);
-              await _refreshTodoCompletionStatus();
-            },
+            onPressed: () => _loadItinerariesForDate(selectedDate),
             child: const Text('Retry'),
           ),
         ],
@@ -4004,7 +3889,7 @@ class _ActivityScreenState extends State<ActivityScreen> {
         final storeKey = '${storeName}_$index';
         bool isExpanded = _expandedStores[storeKey] ?? false;
         
-    return Container(
+        return Container(
           margin: const EdgeInsets.only(bottom: 12),
           decoration: BoxDecoration(
             color: Colors.white,
@@ -4030,12 +3915,12 @@ class _ActivityScreenState extends State<ActivityScreen> {
                   this.setState(() {});
                 },
                 child: Padding(
-      padding: const EdgeInsets.all(16),
-      child: Row(
-        children: [
+                  padding: const EdgeInsets.all(16),
+                  child: Row(
+                    children: [
                       // Time
                       Container(
-            width: 60,
+                        width: 60,
                         child: Text(
                           checkInTime != null 
                               ? '${checkInTime.hour.toString().padLeft(2, '0')}:${checkInTime.minute.toString().padLeft(2, '0')}'
@@ -4069,10 +3954,10 @@ class _ActivityScreenState extends State<ActivityScreen> {
                       
                       // Store details
                       Expanded(
-            child: Column(
+                        child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
+                          children: [
+                            Text(
                               storeName,
                               style: const TextStyle(
                                 fontSize: 16,
@@ -4083,8 +3968,8 @@ class _ActivityScreenState extends State<ActivityScreen> {
                             Text(
                               checkInTime != null 
                                   ? _calculateDuration(checkInTime, checkOutTime)
-                                  : '0',
-                  style: TextStyle(
+                                  : 'Belum check-in',
+                              style: TextStyle(
                                 fontSize: 12,
                                 color: checkInTime != null ? const Color(0xFF29BDCE) : Colors.grey[500],
                                 fontWeight: FontWeight.w500,
@@ -4104,13 +3989,13 @@ class _ActivityScreenState extends State<ActivityScreen> {
                                   '$completedTasks/$totalTasks',
                                   style: const TextStyle(
                                     fontSize: 12,
-                    fontWeight: FontWeight.bold,
+                                    fontWeight: FontWeight.bold,
                                     color: Color(0xFF29BDCE),
-                  ),
+                                  ),
                                 ),
                               ],
-                ),
-                const SizedBox(height: 4),
+                            ),
+                            const SizedBox(height: 4),
                             LinearProgressIndicator(
                               value: totalTasks > 0 ? completedTasks / totalTasks : 0,
                               backgroundColor: Colors.grey[300],
@@ -4200,11 +4085,11 @@ class _ActivityScreenState extends State<ActivityScreen> {
                           child: Text(
                             '${index + 1}',
                             style: const TextStyle(
-                    color: Colors.white,
+                              color: Colors.white,
                               fontSize: 10,
                               fontWeight: FontWeight.bold,
-                  ),
-                ),
+                            ),
+                          ),
                         ),
                 ),
                 // Timeline line
@@ -4215,22 +4100,22 @@ class _ActivityScreenState extends State<ActivityScreen> {
                     color: Colors.grey[300],
                   ),
               ],
-          ),
-          
-          const SizedBox(width: 16),
-          
+            ),
+            
+            const SizedBox(width: 16),
+            
             // Task content
-          Expanded(
-            child: Container(
+            Expanded(
+              child: Container(
                 margin: const EdgeInsets.only(bottom: 16),
                 padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
+                decoration: BoxDecoration(
                   color: isCompleted ? Colors.green.withOpacity(0.05) : Colors.grey[50],
                   borderRadius: BorderRadius.circular(12),
-                border: Border.all(
+                  border: Border.all(
                     color: isCompleted ? Colors.green.withOpacity(0.3) : Colors.grey[200]!,
-                  width: 1,
-                ),
+                    width: 1,
+                  ),
                   boxShadow: [
                     BoxShadow(
                       color: Colors.grey.withOpacity(0.1),
@@ -4238,18 +4123,18 @@ class _ActivityScreenState extends State<ActivityScreen> {
                       offset: const Offset(0, 2),
                     ),
                   ],
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
                         Expanded(
                           child: Text(
                             taskName,
-                        style: TextStyle(
+                            style: TextStyle(
                               fontSize: 16,
-                          fontWeight: FontWeight.bold,
+                              fontWeight: FontWeight.bold,
                               color: isCompleted ? Colors.green[700] : Colors.black87,
                               decoration: isCompleted ? TextDecoration.lineThrough : null,
                             ),
@@ -4264,43 +4149,38 @@ class _ActivityScreenState extends State<ActivityScreen> {
                             ),
                             child: const Text(
                               'DONE',
-                          style: TextStyle(
+                              style: TextStyle(
                                 color: Colors.white,
                                 fontSize: 10,
                                 fontWeight: FontWeight.bold,
                               ),
+                            ),
                           ),
-                        ),
-                    ],
-                  ),
+                      ],
+                    ),
                     
                     const SizedBox(height: 8),
                     
-                    // Special handling for Attendance task
-                    if (taskName == 'Attendance') ...[
-                      _buildAttendanceStatus(todo, isCompleted),
-                    ] else ...[
-                      Text(
-                        isCompleted 
-                            ? 'Task otomatis completed berdasarkan report submission' 
-                            : 'Task akan otomatis completed saat report dikirim',
-                        style: TextStyle(
-                          fontSize: 14,
-                          color: isCompleted ? Colors.green[600] : Colors.grey[600],
-                        ),
+                    Text(
+                      isCompleted 
+                          ? 'Task otomatis completed berdasarkan check-in/out' 
+                          : 'Task akan otomatis completed saat check-in/out',
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: isCompleted ? Colors.green[600] : Colors.grey[600],
                       ),
-                    ],
+                    ),
                     
                     if (isCompleted && todo['completedTime'] != null) ...[
-                  const SizedBox(height: 4),
-                        Text(
+                      const SizedBox(height: 4),
+                      Text(
                         'Completed at: ${_formatCompletedTime(todo['completedTime'])}',
-                          style: TextStyle(
+                        style: TextStyle(
                           fontSize: 12,
                           color: Colors.green[600],
-                            fontWeight: FontWeight.w500,
-                          ),
+                          fontWeight: FontWeight.w500,
                         ),
+                      ),
                     ],
                     
                     if (!isCompleted) ...[
@@ -4328,10 +4208,10 @@ class _ActivityScreenState extends State<ActivityScreen> {
                                   color: Colors.orange[600],
                                   fontWeight: FontWeight.w500,
                                 ),
-            ),
-          ),
-        ],
-      ),
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ],
                   ],
@@ -4353,186 +4233,6 @@ class _ActivityScreenState extends State<ActivityScreen> {
       return '';
     }
   }
-  
-  Widget _buildAttendanceStatus(Map<String, dynamic> todo, bool isCompleted) {
-    final storeId = todo['storeId'] as int? ?? 0;
-    final dateStr = todo['date'] as String? ?? '';
-    
-    print('🔍 _buildAttendanceStatus: storeId=$storeId, dateStr=$dateStr, isCompleted=$isCompleted');
-    
-    // Use local storage to get attendance status
-    return FutureBuilder<Map<String, dynamic>?>(
-      future: _getLocalAttendanceData(storeId, dateStr),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return Text('Loading...', style: TextStyle(fontSize: 14, color: Colors.grey[600]));
-        }
-        
-        final attendanceData = snapshot.data;
-        if (attendanceData == null) {
-          return Text(
-            '0',
-            style: TextStyle(
-              fontSize: 14,
-              color: Colors.grey[500],
-              fontWeight: FontWeight.w500,
-            ),
-          );
-        }
-        
-        final hasCheckIn = attendanceData['checkInTime'] != null;
-        final hasCheckOut = attendanceData['checkOutTime'] != null;
-        
-        print('🔍 Local attendance status: hasCheckIn=$hasCheckIn, hasCheckOut=$hasCheckOut');
-        
-        if (hasCheckIn && hasCheckOut) {
-          // Both check-in and check-out exist - show duration
-          final duration = _calculateDurationFromStrings(
-            attendanceData['checkInTime'], 
-            attendanceData['checkOutTime']
-          );
-          
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                duration,
-                style: TextStyle(
-                  fontSize: 14,
-                  color: Colors.green[600],
-                  fontWeight: FontWeight.w500,
-                ),
-                  ),
-                  const SizedBox(height: 4),
-              Row(
-                children: [
-                  Icon(Icons.login, size: 16, color: Colors.green[600]),
-                  const SizedBox(width: 4),
-                  Text(
-                    'Check-in: ${_formatTimeFromString(attendanceData['checkInTime'])}',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: Colors.green[600],
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 2),
-              Row(
-                children: [
-                  Icon(Icons.logout, size: 16, color: Colors.green[600]),
-                  const SizedBox(width: 4),
-                  Text(
-                    'Check-out: ${_formatTimeFromString(attendanceData['checkOutTime'])}',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: Colors.green[600],
-            ),
-          ),
-        ],
-              ),
-            ],
-          );
-        } else if (hasCheckIn && !hasCheckOut) {
-          // Only check-in exists - show real-time duration from check-in to now
-          final checkInTime = attendanceData['checkInTime'];
-          final duration = _calculateDurationFromStrings(checkInTime, null); // null = use current time
-          
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                duration,
-                style: TextStyle(
-                  fontSize: 14,
-                  color: Colors.orange[600],
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-              const SizedBox(height: 4),
-              Row(
-                children: [
-                  Icon(Icons.login, size: 16, color: Colors.orange[600]),
-                  const SizedBox(width: 4),
-                  Text(
-                    'Check-in: ${_formatTimeFromString(attendanceData['checkInTime'])}',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: Colors.orange[600],
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          );
-        } else {
-          // No check-in
-          return Text(
-            '0',
-            style: TextStyle(
-              fontSize: 14,
-              color: Colors.grey[500],
-              fontWeight: FontWeight.w500,
-      ),
-    );
-  }
-      },
-    );
-  }
-  
-  Future<Map<String, dynamic>?> _getLocalAttendanceData(int storeId, String dateStr) async {
-    try {
-      // Get today's date string
-      final today = DateTime.now();
-      final todayStr = '${today.year.toString().padLeft(4, '0')}-${today.month.toString().padLeft(2, '0')}-${today.day.toString().padLeft(2, '0')}';
-      
-      // Only check for today's attendance
-      if (dateStr != todayStr) {
-        return null;
-      }
-      
-      final prefs = await SharedPreferences.getInstance();
-      final todayRecordData = prefs.getString('today_attendance_record');
-      
-      if (todayRecordData != null) {
-        final data = jsonDecode(todayRecordData);
-        final recordStoreId = data['storeId'] as int? ?? 0;
-        
-        if (recordStoreId == storeId) {
-          return data;
-        }
-      }
-      
-      return null;
-    } catch (e) {
-      print('🔍 Error getting local attendance data: $e');
-      return null;
-    }
-  }
-  
-  String _formatTimeFromString(String timeString) {
-    try {
-      // Handle different time formats
-      if (timeString.contains('T')) {
-        // ISO format: 2025-09-15T10:17:03.112158
-        final dateTime = DateTime.parse(timeString);
-        return '${dateTime.hour.toString().padLeft(2, '0')}:${dateTime.minute.toString().padLeft(2, '0')}';
-      } else if (timeString.contains(':')) {
-        // Time format: 10:17:03
-        final parts = timeString.split(':');
-        return '${parts[0].padLeft(2, '0')}:${parts[1].padLeft(2, '0')}';
-      } else {
-        return timeString;
-      }
-    } catch (e) {
-      return timeString;
-    }
-  }
-  
-  String _formatTimeOfDay(TimeOfDay time) {
-    return '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}';
-  }
-  
 
   List<Map<String, dynamic>> _getPendingTodosForStore(String storeName) {
     return todoItems

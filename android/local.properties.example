@@ -1,10 +1,45 @@
-# Flutter SDK path (example)
-flutter.sdk=/path/to/flutter
+# ===========================================
+# ANDROID LOCAL PROPERTIES TEMPLATE
+# ===========================================
+# 📋 Copy this file to local.properties and fill in your actual values
+# ⚠️  NEVER commit local.properties to version control!
 
-# Google Maps API Keys (SECURE)
+# Android SDK path (usually auto-detected)
+sdk.dir=/path/to/your/android/sdk
+
+# Flutter SDK path (usually auto-detected)
+flutter.sdk=/path/to/your/flutter/sdk
+
+# Flutter build configuration
+flutter.buildMode=debug
+flutter.versionName=1.0.0
+flutter.versionCode=1
+
+# ===========================================
+# GOOGLE MAPS API KEYS
+# ===========================================
+# Get your API keys from: https://console.cloud.google.com/
+# Android Google Maps API Key
 GOOGLE_MAPS_API_KEY_ANDROID=your_android_api_key_here
+
+# iOS Google Maps API Key (for reference)
 GOOGLE_MAPS_API_KEY_IOS=your_ios_api_key_here
 
-# Google Maps Map IDs (SECURE)
+# ===========================================
+# GOOGLE MAPS MAP IDs
+# ===========================================
+# Get your Map IDs from: https://console.cloud.google.com/
+# Android Google Maps Map ID
 GOOGLE_MAPS_MAP_ID_ANDROID=your_android_map_id_here
+
+# iOS Google Maps Map ID (for reference)
 GOOGLE_MAPS_MAP_ID_IOS=your_ios_map_id_here
+
+# ===========================================
+# ANDROID SIGNING (if needed)
+# ===========================================
+# Keystore information for release builds
+# KEYSTORE_PATH=/path/to/your/keystore.jks
+# KEYSTORE_PASSWORD=your_keystore_password
+# KEY_ALIAS=your_key_alias
+# KEY_PASSWORD=your_key_password

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../services/language_service.dart';
 import '../../services/auth_service.dart';
 import '../../services/attendance_service.dart';
 import 'CompetitorActivity/index.dart';
@@ -11,6 +12,7 @@ import 'ProductBelgianBerry/index.dart';
 import 'ProductFocus/index.dart';
 import 'PromoTracking/index.dart';
 import 'RegularDisplay/index.dart';
+import 'Survey/index.dart';
 
 class ReportsScreen extends StatefulWidget {
   const ReportsScreen({super.key});
@@ -259,16 +261,16 @@ class _ReportsScreenState extends State<ReportsScreen> {
         children: [
           // All MD CVS Reports in one grid
           _buildReportGrid([
-            _buildReportItem('Product Focus', Icons.center_focus_strong, const Color(0xFF29BDCE)),
-            _buildReportItem('OOS', Icons.inventory_2, Colors.red),
-            _buildReportItem('Expired Date', Icons.calendar_today, Colors.orange),
-            _buildReportItem('Display', Icons.storefront, const Color(0xFF1E9BA8)),
-            _buildReportItem('Price Principal', Icons.attach_money, Colors.blue),
-            _buildReportItem('Price Competitor', Icons.compare, Colors.purple),
-            _buildReportItem('Promo Tracking', Icons.local_offer, Colors.pink),
-            _buildReportItem('Competitor Activity', Icons.trending_up, Colors.indigo),
-            _buildReportItem('Survey', Icons.assignment, Colors.green),
-            _buildReportItem('Product Belgian Berry', Icons.local_drink, Colors.brown),
+            _buildReportItem(LanguageService.productFocus, Icons.center_focus_strong, const Color(0xFF29BDCE)),
+            _buildReportItem(LanguageService.oos, Icons.inventory_2, Colors.red),
+            _buildReportItem(LanguageService.expiredDate, Icons.calendar_today, Colors.orange),
+            _buildReportItem(LanguageService.display, Icons.storefront, const Color(0xFF1E9BA8)),
+            _buildReportItem(LanguageService.pricePrincipal, Icons.attach_money, Colors.blue),
+            _buildReportItem(LanguageService.priceCompetitor, Icons.compare, Colors.purple),
+            _buildReportItem(LanguageService.promoTracking, Icons.local_offer, Colors.pink),
+            _buildReportItem(LanguageService.competitorActivity, Icons.trending_up, Colors.indigo),
+            _buildReportItem(LanguageService.survey, Icons.assignment, Colors.green),
+            _buildReportItem(LanguageService.productBelgianBerry, Icons.local_drink, Colors.brown),
           ]),
         ],
       ),
@@ -281,35 +283,34 @@ class _ReportsScreenState extends State<ReportsScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // Daily Reports
-          _buildSectionTitle('Daily'),
+          _buildSectionTitle(LanguageService.dailyReports),
           const SizedBox(height: 12),
           _buildReportGrid([
-            _buildReportItem('Sales', Icons.shopping_cart, const Color(0xFF29BDCE)),
-            _buildReportItem('OOS', Icons.inventory_2, Colors.red),
-            _buildReportItem('Expired Date', Icons.calendar_today, Colors.orange),
-            _buildReportItem('Product Belgian Berry', Icons.local_drink, Colors.brown),
+            _buildReportItem(LanguageService.sales, Icons.shopping_cart, const Color(0xFF29BDCE)),
+            _buildReportItem(LanguageService.oos, Icons.inventory_2, Colors.red),
+            _buildReportItem(LanguageService.expiredDate, Icons.calendar_today, Colors.orange),
+            _buildReportItem(LanguageService.survey, Icons.assignment, Colors.green),
           ]),
           
           const SizedBox(height: 24),
           
           // Display Reports
-          _buildSectionTitle('Display'),
+          _buildSectionTitle(LanguageService.displayReports),
           const SizedBox(height: 12),
           _buildReportGrid([
-            _buildReportItem('Regular Display', Icons.storefront, const Color(0xFF1E9BA8)),
+            _buildReportItem(LanguageService.regularDisplay, Icons.storefront, const Color(0xFF1E9BA8)),
           ]),
           
           const SizedBox(height: 24),
           
           // Survey Reports
-          _buildSectionTitle('Survey'),
+          _buildSectionTitle(LanguageService.surveyReports),
           const SizedBox(height: 12),
           _buildReportGrid([
-            _buildReportItem('Price Principal', Icons.attach_money, Colors.blue),
-            _buildReportItem('Price Competitor', Icons.compare, Colors.purple),
-            _buildReportItem('Promo Tracking', Icons.local_offer, Colors.pink),
-            _buildReportItem('Competitor Activity', Icons.trending_up, Colors.indigo),
-            _buildReportItem('Another Activity', Icons.more_horiz, Colors.grey),
+            _buildReportItem(LanguageService.pricePrincipal, Icons.attach_money, Colors.blue),
+            _buildReportItem(LanguageService.priceCompetitor, Icons.compare, Colors.purple),
+            _buildReportItem(LanguageService.promoTracking, Icons.local_offer, Colors.pink),
+            _buildReportItem(LanguageService.competitorActivity, Icons.trending_up, Colors.indigo),
           ]),
         ],
       ),
@@ -445,6 +446,8 @@ class _ReportsScreenState extends State<ReportsScreen> {
       _navigateToPromoTrackingReport();
     } else if (reportName == 'Regular Display') {
       _navigateToRegularDisplayReport();
+    } else if (reportName == 'Survey') {
+      _navigateToSurveyReport();
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -589,7 +592,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
       final todayRecord = await attendanceService.getTodayRecord();
 
       if (todayRecord != null && todayRecord.storeId != null && todayRecord.storeName != null) {
-        Navigator.of(context).push(
+        final result = await Navigator.of(context).push<bool>(
           MaterialPageRoute(
             builder: (context) => OutOfStockReportScreen(
               storeId: todayRecord.storeId!,
@@ -597,6 +600,10 @@ class _ReportsScreenState extends State<ReportsScreen> {
             ),
           ),
         );
+        // Return success to dashboard if report was submitted
+        if (result == true) {
+          Navigator.of(context).pop(true);
+        }
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -817,6 +824,47 @@ class _ReportsScreenState extends State<ReportsScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Please check in to a store first before creating Regular Display report'),
+            backgroundColor: Colors.orange,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.all(Radius.circular(8)),
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error: $e'),
+          backgroundColor: Colors.red,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(8),
+          ),
+        ),
+      );
+    }
+  }
+
+  Future<void> _navigateToSurveyReport() async {
+    try {
+      // Get current store information from attendance service
+      final attendanceService = AttendanceService();
+      final todayRecord = await attendanceService.getTodayRecord();
+
+      if (todayRecord != null && todayRecord.storeId != null && todayRecord.storeName != null) {
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (context) => SurveyReportScreen(
+              storeId: todayRecord.storeId!,
+              storeName: todayRecord.storeName!,
+            ),
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Please check in to a store first before creating Survey report'),
             backgroundColor: Colors.orange,
             behavior: SnackBarBehavior.floating,
             shape: RoundedRectangleBorder(

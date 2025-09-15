@@ -4,6 +4,7 @@ import 'package:image_picker/image_picker.dart';
 import '../config/env.dart';
 import '../models/competitor_activity.dart';
 import 'auth_service.dart';
+import 'report_completion_service.dart';
 
 class CompetitorActivityService {
   static final ImagePicker _picker = ImagePicker();
@@ -96,6 +97,29 @@ class CompetitorActivityService {
 
       if (response.statusCode == 200 || response.statusCode == 201) {
         final Map<String, dynamic> responseData = jsonDecode(response.body);
+        
+        // Save completion status to local storage
+        final submissionTime = DateTime.now();
+        final todayDate = submissionTime.toIso8601String().split('T')[0];
+        await ReportCompletionService.markReportCompleted(
+          storeId: storeId,
+          reportType: 'competitor_activity',
+          date: todayDate,
+          completedAt: submissionTime,
+          reportData: {
+            'principalId': principalId,
+            'typePromotionId': typePromotionId,
+            'promoMechanism': promoMechanism,
+            'startDate': startDate.toIso8601String().split('T')[0],
+            'endDate': endDate.toIso8601String().split('T')[0],
+            'isAdditionalDisplay': isAdditionalDisplay,
+            'isPosm': isPosm,
+            'productsCount': products.length,
+            'hasImage': image != null,
+            'submittedAt': submissionTime.toIso8601String(),
+          },
+        );
+        
         return CompetitorActivityResponse.fromJson(responseData);
       } else {
         try {

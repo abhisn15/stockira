@@ -7,6 +7,7 @@ import 'dart:convert';
 import 'package:intl/intl.dart';
 import '../../../config/env.dart';
 import '../../../services/auth_service.dart';
+import '../../../services/report_completion_service.dart';
 
 // Custom formatter for Rupiah currency
 class RupiahInputFormatter extends TextInputFormatter {
@@ -342,6 +343,25 @@ class _PromoTrackingReportScreenState extends State<PromoTrackingReportScreen> {
       print('Response Body: ${response.body}');
 
       if (response.statusCode == 200 || response.statusCode == 201) {
+        // Save completion status to local storage
+        final submissionTime = DateTime.now();
+        await ReportCompletionService.markReportCompleted(
+          storeId: widget.storeId,
+          reportType: 'promo_tracking',
+          date: DateFormat('yyyy-MM-dd').format(_selectedDate!),
+          completedAt: submissionTime,
+          reportData: {
+            'typePromotionId': _selectedTypePromotionId,
+            'promoMechanism': _promoMechanism,
+            'startDate': DateFormat('yyyy-MM-dd').format(_selectedStartDate!),
+            'endDate': DateFormat('yyyy-MM-dd').format(_selectedEndDate!),
+            'normalPrice': _normalPriceController.text.replaceAll(RegExp(r'[^0-9]'), ''),
+            'promoPrice': _promoPriceController.text.replaceAll(RegExp(r'[^0-9]'), ''),
+            'hasImage': _selectedImage != null,
+            'submittedAt': submissionTime.toIso8601String(),
+          },
+        );
+        
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Promo Tracking report submitted successfully!'),
@@ -352,7 +372,7 @@ class _PromoTrackingReportScreenState extends State<PromoTrackingReportScreen> {
             ),
           ),
         );
-        Navigator.pop(context);
+        Navigator.pop(context, true); // Return true to indicate successful submission
       } else {
         try {
           final errorData = jsonDecode(response.body);

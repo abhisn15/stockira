@@ -4,6 +4,7 @@ import 'package:image_picker/image_picker.dart';
 import '../config/env.dart';
 import 'auth_service.dart';
 import '../models/display_report.dart';
+import 'report_completion_service.dart';
 
 class DisplayReportService {
   static final ImagePicker _picker = ImagePicker();
@@ -69,6 +70,24 @@ class DisplayReportService {
 
       if (response.statusCode == 200 || response.statusCode == 201) {
         final Map<String, dynamic> responseData = jsonDecode(response.body);
+        
+        // Save completion status to local storage
+        final submissionTime = DateTime.now();
+        final todayDate = submissionTime.toIso8601String().split('T')[0];
+        await ReportCompletionService.markReportCompleted(
+          storeId: storeId,
+          reportType: 'display_report',
+          date: todayDate,
+          completedAt: submissionTime,
+          reportData: {
+            'typeAdditionalId': typeAdditionalId,
+            'constraint': constraint,
+            'totalBucketProduct': totalBucketProduct,
+            'imagesCount': images.length,
+            'submittedAt': submissionTime.toIso8601String(),
+          },
+        );
+        
         return DisplayReportResponse.fromJson(responseData);
       } else {
         try {

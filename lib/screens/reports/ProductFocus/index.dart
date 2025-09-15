@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:intl/intl.dart';
 import '../../../config/env.dart';
 import '../../../services/auth_service.dart';
+import '../../../services/report_completion_service.dart';
 import 'package:flutter/services.dart';
 
 class ProductFocusReportScreen extends StatefulWidget {
@@ -307,6 +308,20 @@ class _ProductFocusReportScreenState extends State<ProductFocusReportScreen> {
         
         // Use fallback response if successful
         if (fallbackResponse.statusCode == 200 || fallbackResponse.statusCode == 201) {
+          // Save completion status to local storage
+          final submissionTime = DateTime.now();
+          await ReportCompletionService.markReportCompleted(
+            storeId: widget.storeId,
+            reportType: 'product_focus',
+            date: formattedDate,
+            completedAt: submissionTime,
+            reportData: {
+              'isCountStockAllowed': _isCountStockAllowed,
+              'productsCount': productsData.length,
+              'submittedAt': submissionTime.toIso8601String(),
+            },
+          );
+          
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
               content: Text('Product Focus report submitted successfully! (Using fallback store_id)'),
@@ -317,7 +332,7 @@ class _ProductFocusReportScreenState extends State<ProductFocusReportScreen> {
               ),
             ),
           );
-          Navigator.pop(context);
+          Navigator.pop(context, true); // Return true to indicate successful submission
           return;
         }
       }
@@ -327,6 +342,20 @@ class _ProductFocusReportScreenState extends State<ProductFocusReportScreen> {
       final responseBody = jsonResponse.body;
 
       if (response.statusCode == 200 || response.statusCode == 201) {
+        // Save completion status to local storage
+        final submissionTime = DateTime.now();
+        await ReportCompletionService.markReportCompleted(
+          storeId: widget.storeId,
+          reportType: 'product_focus',
+          date: formattedDate,
+          completedAt: submissionTime,
+          reportData: {
+            'isCountStockAllowed': _isCountStockAllowed,
+            'productsCount': productsData.length,
+            'submittedAt': submissionTime.toIso8601String(),
+          },
+        );
+        
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Product Focus report submitted successfully!'),
@@ -337,7 +366,7 @@ class _ProductFocusReportScreenState extends State<ProductFocusReportScreen> {
             ),
           ),
         );
-        Navigator.pop(context);
+        Navigator.pop(context, true); // Return true to indicate successful submission
       } else {
         try {
           final errorData = jsonDecode(responseBody);

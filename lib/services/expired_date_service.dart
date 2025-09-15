@@ -3,6 +3,7 @@ import 'package:http/http.dart' as http;
 import '../config/env.dart';
 import 'auth_service.dart';
 import '../models/expired_date_report.dart';
+import 'report_completion_service.dart';
 
 class ExpiredDateService {
   // Submit expired date report
@@ -64,6 +65,20 @@ class ExpiredDateService {
 
       if (response.statusCode == 200 || response.statusCode == 201) {
         final Map<String, dynamic> responseData = jsonDecode(response.body);
+        
+        // Save completion status to local storage
+        final submissionTime = DateTime.now();
+        await ReportCompletionService.markReportCompleted(
+          storeId: storeId,
+          reportType: 'expired_date',
+          date: date,
+          completedAt: submissionTime,
+          reportData: {
+            'itemsCount': items.length,
+            'submittedAt': submissionTime.toIso8601String(),
+          },
+        );
+        
         return ExpiredDateReportResponse.fromJson(responseData);
       } else {
         try {

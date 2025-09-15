@@ -4,6 +4,7 @@ import 'package:image_picker/image_picker.dart';
 import '../config/env.dart';
 import 'auth_service.dart';
 import '../models/out_of_stock_report.dart';
+import 'report_completion_service.dart';
 
 class OutOfStockService {
   static final ImagePicker _picker = ImagePicker();
@@ -80,6 +81,22 @@ class OutOfStockService {
 
       if (response.statusCode == 200 || response.statusCode == 201) {
         final Map<String, dynamic> responseData = jsonDecode(response.body);
+        
+        // Save completion status to local storage
+        final submissionTime = DateTime.now();
+        await ReportCompletionService.markReportCompleted(
+          storeId: storeId,
+          reportType: 'out_of_stock',
+          date: date,
+          completedAt: submissionTime,
+          reportData: {
+            'isOutOfStock': isOutOfStock,
+            'productsCount': products.length,
+            'imagesCount': images.length,
+            'submittedAt': submissionTime.toIso8601String(),
+          },
+        );
+        
         return OutOfStockReportResponse.fromJson(responseData);
       } else {
         try {

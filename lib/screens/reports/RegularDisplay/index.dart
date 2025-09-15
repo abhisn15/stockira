@@ -3,8 +3,10 @@ import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
 import 'dart:io';
 import 'dart:convert';
+import 'package:intl/intl.dart';
 import '../../../config/env.dart';
 import '../../../services/auth_service.dart';
+import '../../../services/report_completion_service.dart';
 
 class RegularDisplayReportScreen extends StatefulWidget {
   final int storeId;
@@ -221,6 +223,23 @@ class _RegularDisplayReportScreenState extends State<RegularDisplayReportScreen>
       print('Response Body: ${response.body}');
 
       if (response.statusCode == 200 || response.statusCode == 201) {
+        // Save completion status to local storage
+        final submissionTime = DateTime.now();
+        await ReportCompletionService.markReportCompleted(
+          storeId: widget.storeId,
+          reportType: 'regular_display',
+          date: DateFormat('yyyy-MM-dd').format(submissionTime),
+          completedAt: submissionTime,
+          reportData: {
+            'productSubBrandId': _selectedProductSubBrandId,
+            'typeRegulerId': _selectedTypeRegulerId,
+            'remark': _remarkController.text,
+            'hasImageBefore': _selectedImageBefore != null,
+            'hasImageAfter': _selectedImageAfter != null,
+            'submittedAt': submissionTime.toIso8601String(),
+          },
+        );
+        
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Regular Display report submitted successfully!'),
@@ -231,7 +250,7 @@ class _RegularDisplayReportScreenState extends State<RegularDisplayReportScreen>
             ),
           ),
         );
-        Navigator.pop(context);
+        Navigator.pop(context, true); // Return true to indicate successful submission
       } else {
         try {
           final errorData = jsonDecode(response.body);

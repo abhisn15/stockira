@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:intl/intl.dart';
 import '../../../config/env.dart';
 import '../../../services/auth_service.dart';
+import '../../../services/report_completion_service.dart';
 
 class ProductBelgianBerryReportScreen extends StatefulWidget {
   const ProductBelgianBerryReportScreen({
@@ -98,6 +99,22 @@ class _ProductBelgianBerryReportScreenState
       final responseBody = await response.stream.bytesToString();
 
       if (response.statusCode == 200 || response.statusCode == 201) {
+        // Save completion status to local storage
+        final submissionTime = DateTime.now();
+        await ReportCompletionService.markReportCompleted(
+          storeId: widget.storeId,
+          reportType: 'product_belgian_berry',
+          date: DateFormat('yyyy-MM-dd').format(_selectedDate!),
+          completedAt: submissionTime,
+          reportData: {
+            'finalStock': _finalStock,
+            'manySellToday': _manySellToday,
+            'expiredDate': DateFormat('yyyy-MM-dd').format(_expiredDate!),
+            'description': _description,
+            'submittedAt': submissionTime.toIso8601String(),
+          },
+        );
+        
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Product Belgian Berry report submitted successfully!'),
@@ -108,7 +125,7 @@ class _ProductBelgianBerryReportScreenState
             ),
           ),
         );
-        Navigator.pop(context);
+        Navigator.pop(context, true); // Return true to indicate successful submission
       } else {
         final errorData = jsonDecode(responseBody);
         ScaffoldMessenger.of(context).showSnackBar(

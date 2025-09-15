@@ -44,26 +44,120 @@ app.*.map.json
 /android/app/profile
 /android/app/release
 
-# Environment variables & Security files
+# ===========================================
+# ENVIRONMENT VARIABLES & SECURITY FILES
+# ===========================================
+# Environment files - NEVER commit these!
 .env
 .env.local
 .env.production
 .env.staging
+.env.development
+.env.test
 
-# Android security files
+# ===========================================
+# ANDROID SECURITY FILES
+# ===========================================
+# Local properties with API keys
 android/local.properties
 android/app/google-services.json
+android/app/google-services-debug.json
+android/app/google-services-release.json
+android/gradle.properties
 
-# iOS security files
+# Android keystore files
+android/app/*.keystore
+android/app/*.jks
+android/app/*.p12
+android/app/*.mobileprovision
+
+# Android signing configs
+android/app/signing.properties
+android/app/key.properties
+
+# ===========================================
+# iOS SECURITY FILES
+# ===========================================
+# iOS configuration files with API keys
 ios/Configuration/ApiKeys.xcconfig
 ios/GoogleService-Info.plist
+ios/GoogleService-Info-Debug.plist
+ios/GoogleService-Info-Release.plist
+ios/Flutter/Debug.xcconfig
+ios/Flutter/Release.xcconfig
 
-# Security keys & certificates
+# iOS provisioning profiles
+ios/*.mobileprovision
+ios/*.provisionprofile
+
+# iOS certificates
+ios/*.p12
+ios/*.cer
+ios/*.certSigningRequest
+
+# ===========================================
+# SECURITY KEYS & CERTIFICATES
+# ===========================================
+# General security files
 *.keystore
 *.jks
 *.p12
 *.mobileprovision
+*.provisionprofile
+*.cer
+*.certSigningRequest
+*.pem
+*.key
+*.crt
 
-# API keys backup (if any)
+# ===========================================
+# API KEYS & SECRETS BACKUP
+# ===========================================
+# API keys directories
 **/api_keys/
 **/secrets/
+**/credentials/
+**/keys/
+**/certs/
+
+# Configuration backups
+**/config/backup/
+**/config/local/
+**/config/private/
+
+# ===========================================
+# DEVELOPMENT & DEBUG FILES
+# ===========================================
+# Debug configurations
+debug.properties
+release.properties
+staging.properties
+
+# Local development files
+local_config.dart
+dev_config.dart
+test_config.dart
+
+# ===========================================
+# ADDITIONAL SECURITY
+# ===========================================
+# Database connection strings
+database.yml
+database.json
+db_config.*
+
+# Third-party service configs
+firebase_config.json
+aws_config.json
+azure_config.json
+
+# Log files that might contain sensitive data
+*.log
+logs/
+**/logs/
+
+# Temporary files
+*.tmp
+*.temp
+temp/
+tmp/
