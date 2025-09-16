@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../services/language_service.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_translate/flutter_translate.dart';
 import 'package:stockira/screens/dashboard/index.dart';
 import 'package:stockira/screens/url_setting/index.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -438,7 +439,7 @@ class _AuthScreenState extends State<AuthScreen> {
         });
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(LanguageService.passwordResetSuccess),
+            content: Text(translate('passwordResetSuccess')),
             backgroundColor: Colors.green,
           ),
         );
@@ -567,7 +568,7 @@ class _AuthScreenState extends State<AuthScreen> {
             child: TextButton(
               onPressed: _isLoading ? null : _goToForgotPassword,
               style: TextButton.styleFrom(foregroundColor: theme),
-              child: Text(LanguageService.forgotPassword),
+              child: Text(translate('forgotPassword')),
             ),
           ),
           const SizedBox(height: 4),
@@ -713,7 +714,7 @@ class _AuthScreenState extends State<AuthScreen> {
         TextButton.icon(
           onPressed: _isLoading ? null : _backToLogin,
           icon: const Icon(Icons.arrow_back, size: 18),
-          label: Text(LanguageService.backToLogin),
+          label: Text(translate('backToLogin')),
           style: TextButton.styleFrom(foregroundColor: theme),
         ),
       ],
@@ -868,7 +869,7 @@ class _AuthScreenState extends State<AuthScreen> {
         TextButton.icon(
           onPressed: _isLoading ? null : _backToLogin,
           icon: const Icon(Icons.arrow_back, size: 18),
-          label: Text(LanguageService.backToLogin),
+          label: Text(translate('backToLogin')),
           style: TextButton.styleFrom(foregroundColor: theme),
         ),
       ],
@@ -963,7 +964,7 @@ class _AuthScreenState extends State<AuthScreen> {
         TextButton.icon(
           onPressed: _isLoading ? null : _backToLogin,
           icon: const Icon(Icons.arrow_back, size: 18),
-          label: Text(LanguageService.backToLogin),
+          label: Text(translate('backToLogin')),
           style: TextButton.styleFrom(foregroundColor: theme),
         ),
       ],

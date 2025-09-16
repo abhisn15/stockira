@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 import '../../../config/env.dart';
 import '../../../services/auth_service.dart';
 import '../../../services/report_completion_service.dart';
+import 'package:flutter_translate/flutter_translate.dart';
 
 class PricePrincipalReportScreen extends StatefulWidget {
   const PricePrincipalReportScreen({super.key, required this.storeId, required this.storeName});
@@ -469,10 +470,10 @@ class _PricePrincipalReportScreenState extends State<PricePrincipalReportScreen>
               borderRadius: BorderRadius.circular(8),
               border: Border.all(color: Colors.grey[300]!),
             ),
-            child: const Center(
+            child: Center(
               child: Text(
-                'No products added yet. Tap "Add Product" to start.',
-                style: TextStyle(
+                translate('noProductsAdded'),
+                style: const TextStyle(
                   color: Colors.grey,
                   fontSize: 14,
                 ),
@@ -966,8 +967,8 @@ class _PricePrincipalReportScreenState extends State<PricePrincipalReportScreen>
     final activeColor = isPromo ? Colors.orange[600]! : Colors.blue[600]!;
     final borderColor = isPromo ? Colors.orange[200]! : Colors.blue[200]!;
     final icon = isPromo ? Icons.local_offer : Icons.price_check;
-    final label = isPromo ? "Is Promo" : "Is Price Tag";
-    final enabledText = "Enabled";
+    final label = isPromo ? translate('isPromo') : translate('isPriceTag');
+    final enabledText = translate('enabled');
 
     return GestureDetector(
       onTap: () => onChanged(!value),

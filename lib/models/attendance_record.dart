@@ -21,6 +21,8 @@ class AttendanceDetail {
   final double longitudeIn;
   final double? latitudeOut;
   final double? longitudeOut;
+  final bool? salesReportCompleted;
+  final DateTime? salesReportCompletedAt;
 
   AttendanceDetail({
     required this.id,
@@ -43,6 +45,8 @@ class AttendanceDetail {
     required this.longitudeIn,
     this.latitudeOut,
     this.longitudeOut,
+    this.salesReportCompleted,
+    this.salesReportCompletedAt,
   });
 
   factory AttendanceDetail.fromJson(Map<String, dynamic> json) {
@@ -73,12 +77,66 @@ class AttendanceDetail {
       longitudeOut: json['longitude_out'] != null
           ? double.parse(json['longitude_out'].toString())
           : null,
+      salesReportCompleted: json['sales_report_completed'] == 1,
+      salesReportCompletedAt: json['sales_report_completed_at'] != null
+          ? DateTime.parse(json['sales_report_completed_at'])
+          : null,
     );
   }
 
   static TimeOfDay _parseTimeOfDay(String timeString) {
     final parts = timeString.split(':');
     return TimeOfDay(hour: int.parse(parts[0]), minute: int.parse(parts[1]));
+  }
+
+  AttendanceDetail copyWith({
+    int? id,
+    int? attendanceId,
+    int? storeId,
+    String? storeName,
+    bool? isOutItinerary,
+    bool? isApproved,
+    String? noteIn,
+    String? noteOut,
+    TimeOfDay? checkInTime,
+    TimeOfDay? checkOutTime,
+    String? imageUrlIn,
+    String? imageUrlOut,
+    String? imagePathIn,
+    String? imagePathOut,
+    double? distanceIn,
+    double? distanceOut,
+    double? latitudeIn,
+    double? longitudeIn,
+    double? latitudeOut,
+    double? longitudeOut,
+    bool? salesReportCompleted,
+    DateTime? salesReportCompletedAt,
+  }) {
+    return AttendanceDetail(
+      id: id ?? this.id,
+      attendanceId: attendanceId ?? this.attendanceId,
+      storeId: storeId ?? this.storeId,
+      storeName: storeName ?? this.storeName,
+      isOutItinerary: isOutItinerary ?? this.isOutItinerary,
+      isApproved: isApproved ?? this.isApproved,
+      noteIn: noteIn ?? this.noteIn,
+      noteOut: noteOut ?? this.noteOut,
+      checkInTime: checkInTime ?? this.checkInTime,
+      checkOutTime: checkOutTime ?? this.checkOutTime,
+      imageUrlIn: imageUrlIn ?? this.imageUrlIn,
+      imageUrlOut: imageUrlOut ?? this.imageUrlOut,
+      imagePathIn: imagePathIn ?? this.imagePathIn,
+      imagePathOut: imagePathOut ?? this.imagePathOut,
+      distanceIn: distanceIn ?? this.distanceIn,
+      distanceOut: distanceOut ?? this.distanceOut,
+      latitudeIn: latitudeIn ?? this.latitudeIn,
+      longitudeIn: longitudeIn ?? this.longitudeIn,
+      latitudeOut: latitudeOut ?? this.latitudeOut,
+      longitudeOut: longitudeOut ?? this.longitudeOut,
+      salesReportCompleted: salesReportCompleted ?? this.salesReportCompleted,
+      salesReportCompletedAt: salesReportCompletedAt ?? this.salesReportCompletedAt,
+    );
   }
 }
 

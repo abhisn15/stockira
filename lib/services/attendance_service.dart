@@ -366,7 +366,7 @@ class AttendanceService {
 
   // Check out
   Future<AttendanceRecord> checkOut({
-    required XFile image,
+    XFile? image, // Now optional
     required String note,
   }) async {
     print('🔴 CHECKOUT CALLED!');
@@ -455,8 +455,13 @@ class AttendanceService {
 
       print('📤 Checkout request fields: ${request.fields}');
 
-      // Add image file
-      request.files.add(await http.MultipartFile.fromPath('image', image.path));
+      // Add image file only if provided
+      if (image != null) {
+        request.files.add(await http.MultipartFile.fromPath('image', image.path));
+        print('📸 Image file added to request');
+      } else {
+        print('📸 No image provided - skipping image upload');
+      }
 
       // Send request
       final streamedResponse = await request.send();

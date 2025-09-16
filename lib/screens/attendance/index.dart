@@ -7,6 +7,7 @@ import 'package:stockira/models/attendance_record.dart';
 import 'package:stockira/widgets/attendance_list_widget.dart';
 import 'package:stockira/widgets/cute_loading_widget.dart';
 import 'Maps/index.dart';
+import 'package:flutter_translate/flutter_translate.dart';
 
 class AttendanceScreen extends StatefulWidget {
   const AttendanceScreen({super.key});
@@ -610,7 +611,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Attendance'),
+        title: Text(translate('attendance')),
         backgroundColor: const Color.fromARGB(255, 41, 189, 206),
         foregroundColor: Colors.white,
         actions: [
@@ -621,7 +622,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
               calendarDataCache.clear();
               _loadCalendarDataForMonth(selectedDate);
             },
-            tooltip: 'Refresh Data',
+            tooltip: translate('refreshData'),
           ),
         ],
       ),
@@ -658,22 +659,22 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
                         _buildLegendItem(
                           color: Colors.green.shade100,
                           borderColor: Colors.green,
-                          label: 'Present (Approved)',
+                          label: translate('presentApproved'),
                         ),
                         _buildLegendItem(
                           color: Colors.yellow.shade200,
                           borderColor: Colors.orange,
-                          label: 'Present (Pending)',
+                          label: translate('presentPending'),
                         ),
                         _buildLegendItem(
                           color: Colors.red.shade100,
                           borderColor: Colors.red,
-                          label: 'Absent',
+                          label: translate('absent'),
                         ),
                         _buildLegendItem(
                           color: Colors.grey.shade200,
                           borderColor: null,
-                          label: 'No Data',
+                          label: translate('noData'),
                         ),
                       ],
                     ),
@@ -702,7 +703,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
                               ),
                               const SizedBox(width: 4),
                               Text(
-                                'Attendance',
+                                translate('attendance'),
                                 style: TextStyle(
                                   fontSize: 12,
                                   color: Colors.green[800],
@@ -958,25 +959,25 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
             else
               Container(
                 padding: const EdgeInsets.all(32),
-                child: const Center(
-                  child: Column(
-                    children: [
-                      Icon(
-                        Icons.event_busy,
-                        size: 48,
-                        color: Colors.grey,
-                      ),
-                      SizedBox(height: 16),
-                      Text(
-                        'No attendance data for this date',
-                        style: TextStyle(
-                          fontSize: 16,
+                  child: Center(
+                    child: Column(
+                      children: [
+                        const Icon(
+                          Icons.event_busy,
+                          size: 48,
                           color: Colors.grey,
                         ),
-                      ),
-                    ],
+                        const SizedBox(height: 16),
+                        Text(
+                          translate('noAttendanceData'),
+                          style: const TextStyle(
+                            fontSize: 16,
+                            color: Colors.grey,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                ),
               ),
           ],
         ),

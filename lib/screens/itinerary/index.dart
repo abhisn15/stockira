@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:stockira/services/itinerary_service.dart';
 import 'package:stockira/models/itinerary.dart';
+import 'package:flutter_translate/flutter_translate.dart';
 
 class ItineraryScreen extends StatefulWidget {
   const ItineraryScreen({super.key});
@@ -51,14 +52,14 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Itinerary'),
+        title: Text(translate('itinerary')),
         backgroundColor: const Color.fromARGB(255, 41, 189, 206),
         foregroundColor: Colors.white,
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh),
             onPressed: _loadItineraries,
-            tooltip: 'Refresh',
+            tooltip: translate('refresh'),
           ),
         ],
       ),
@@ -88,7 +89,7 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
           ),
           const SizedBox(height: 20),
           Text(
-            'Error Loading Itineraries',
+            translate('errorLoadingItineraries'),
             style: const TextStyle(
               fontSize: 24,
               fontWeight: FontWeight.bold,
@@ -110,7 +111,7 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
               backgroundColor: const Color.fromARGB(255, 41, 189, 206),
               foregroundColor: Colors.white,
             ),
-            child: const Text('Retry'),
+            child: Text(translate('retry')),
           ),
         ],
       ),
@@ -128,17 +129,17 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
             color: Color.fromARGB(255, 41, 189, 206),
           ),
           const SizedBox(height: 20),
-          const Text(
-            'No Itineraries Found',
-            style: TextStyle(
+          Text(
+            translate('noItinerariesFound'),
+            style: const TextStyle(
               fontSize: 24,
               fontWeight: FontWeight.bold,
             ),
           ),
           const SizedBox(height: 10),
-          const Text(
-            'You don\'t have any itineraries scheduled yet',
-            style: TextStyle(
+          Text(
+            translate('noItinerariesScheduled'),
+            style: const TextStyle(
               fontSize: 16,
               color: Colors.grey,
             ),
@@ -151,7 +152,7 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
               backgroundColor: const Color.fromARGB(255, 41, 189, 206),
               foregroundColor: Colors.white,
             ),
-            child: const Text('Refresh'),
+            child: Text(translate('refresh')),
           ),
         ],
       ),
@@ -205,7 +206,7 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'Itinerary #${itinerary.id}',
+                        '${translate('itineraryNumber')}${itinerary.id}',
                         style: const TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.bold,
@@ -229,7 +230,7 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Text(
-                    '${itinerary.stores.length} stores',
+                    '${itinerary.stores.length} ${translate('stores')}',
                     style: const TextStyle(
                       fontSize: 12,
                       color: Colors.green,
@@ -240,9 +241,9 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
               ],
             ),
             const SizedBox(height: 16),
-            const Text(
-              'Stores to Visit:',
-              style: TextStyle(
+            Text(
+              translate('storesToVisit'),
+              style: const TextStyle(
                 fontSize: 16,
                 fontWeight: FontWeight.w600,
               ),

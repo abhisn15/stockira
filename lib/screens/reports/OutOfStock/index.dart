@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import '../../../models/out_of_stock_report.dart';
 import '../../../services/out_of_stock_service.dart';
 import '../../../widgets/cute_loading_widget.dart';
+import 'package:flutter_translate/flutter_translate.dart';
 
 class OutOfStockReportScreen extends StatefulWidget {
   final int storeId;
@@ -385,10 +386,10 @@ class _OutOfStockReportScreenState extends State<OutOfStockReportScreen> {
                     border: Border.all(color: Colors.grey[300]!),
                     borderRadius: BorderRadius.circular(8),
                   ),
-                  child: const Center(
+                  child: Center(
                     child: Text(
-                      'No products added yet. Tap "Add Product" to start.',
-                      style: TextStyle(
+                      translate('noProductsAdded'),
+                      style: const TextStyle(
                         color: Colors.grey,
                         fontSize: 14,
                       ),

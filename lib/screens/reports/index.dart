@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import '../../services/language_service.dart';
 import '../../services/auth_service.dart';
+import 'package:flutter_translate/flutter_translate.dart';
 import '../../services/attendance_service.dart';
 import 'CompetitorActivity/index.dart';
 import 'Display/index.dart';
@@ -13,6 +13,8 @@ import 'ProductFocus/index.dart';
 import 'PromoTracking/index.dart';
 import 'RegularDisplay/index.dart';
 import 'Survey/index.dart';
+import 'Sales/index.dart';
+import '../Availability/index.dart';
 
 class ReportsScreen extends StatefulWidget {
   const ReportsScreen({super.key});
@@ -243,11 +245,19 @@ class _ReportsScreenState extends State<ReportsScreen> {
           
           // Report categories
           Expanded(
-            child: _userRole == 'MD CVS' 
-                ? _buildMDCVSReports()
-                : _userRole == 'SPG'
-                    ? _buildSPGReports()
-                    : _buildUnknownRoleReports(),
+            child: () {
+              print('🔍 User role: "$_userRole"');
+              if (_userRole == 'MD CVS') {
+                print('📋 Building MD CVS Reports');
+                return _buildMDCVSReports();
+              } else if (_userRole == 'SPG') {
+                print('📋 Building SPG Reports');
+                return _buildSPGReports();
+              } else {
+                print('📋 Building Unknown Role Reports for: "$_userRole"');
+                return _buildUnknownRoleReports();
+              }
+            }(),
           ),
         ],
       ),
@@ -261,16 +271,16 @@ class _ReportsScreenState extends State<ReportsScreen> {
         children: [
           // All MD CVS Reports in one grid
           _buildReportGrid([
-            _buildReportItem(LanguageService.productFocus, Icons.center_focus_strong, const Color(0xFF29BDCE)),
-            _buildReportItem(LanguageService.oos, Icons.inventory_2, Colors.red),
-            _buildReportItem(LanguageService.expiredDate, Icons.calendar_today, Colors.orange),
-            _buildReportItem(LanguageService.display, Icons.storefront, const Color(0xFF1E9BA8)),
-            _buildReportItem(LanguageService.pricePrincipal, Icons.attach_money, Colors.blue),
-            _buildReportItem(LanguageService.priceCompetitor, Icons.compare, Colors.purple),
-            _buildReportItem(LanguageService.promoTracking, Icons.local_offer, Colors.pink),
-            _buildReportItem(LanguageService.competitorActivity, Icons.trending_up, Colors.indigo),
-            _buildReportItem(LanguageService.survey, Icons.assignment, Colors.green),
-            _buildReportItem(LanguageService.productBelgianBerry, Icons.local_drink, Colors.brown),
+            _buildReportItem(translate('productFocus'), Icons.center_focus_strong, const Color(0xFF29BDCE)),
+            _buildReportItem(translate('oos'), Icons.inventory_2, Colors.red),
+            _buildReportItem(translate('expiredDate'), Icons.calendar_today, Colors.orange),
+            _buildReportItem(translate('display'), Icons.storefront, const Color(0xFF1E9BA8)),
+            _buildReportItem(translate('pricePrincipal'), Icons.attach_money, Colors.blue),
+            _buildReportItem(translate('priceCompetitor'), Icons.compare, Colors.purple),
+            _buildReportItem(translate('promoTracking'), Icons.local_offer, Colors.pink),
+            _buildReportItem(translate('competitorActivity'), Icons.trending_up, Colors.indigo),
+            _buildReportItem(translate('survey'), Icons.assignment, Colors.green),
+            _buildReportItem(translate('productBelgianBerry'), Icons.local_drink, Colors.brown),
           ]),
         ],
       ),
@@ -283,34 +293,36 @@ class _ReportsScreenState extends State<ReportsScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // Daily Reports
-          _buildSectionTitle(LanguageService.dailyReports),
+          _buildSectionTitle(translate('dailyReports')),
           const SizedBox(height: 12),
           _buildReportGrid([
-            _buildReportItem(LanguageService.sales, Icons.shopping_cart, const Color(0xFF29BDCE)),
-            _buildReportItem(LanguageService.oos, Icons.inventory_2, Colors.red),
-            _buildReportItem(LanguageService.expiredDate, Icons.calendar_today, Colors.orange),
-            _buildReportItem(LanguageService.survey, Icons.assignment, Colors.green),
+            _buildReportItem(translate('sales'), Icons.shopping_cart, const Color(0xFF29BDCE)),
+            _buildReportItem(translate('oos'), Icons.inventory_2, Colors.red),
+            _buildReportItem(translate('expiredDate'), Icons.calendar_today, Colors.orange),
+            _buildReportItem(translate('pricePrincipal'), Icons.attach_money, Colors.blue),
+            _buildReportItem(translate('priceCompetitor'), Icons.compare, Colors.purple),
+            _buildReportItem(translate('survey'), Icons.assignment, Colors.green),
           ]),
           
           const SizedBox(height: 24),
           
           // Display Reports
-          _buildSectionTitle(LanguageService.displayReports),
+          _buildSectionTitle(translate('displayReports')),
           const SizedBox(height: 12),
           _buildReportGrid([
-            _buildReportItem(LanguageService.regularDisplay, Icons.storefront, const Color(0xFF1E9BA8)),
+            _buildReportItem(translate('regularDisplay'), Icons.storefront, const Color(0xFF1E9BA8)),
           ]),
           
           const SizedBox(height: 24),
           
           // Survey Reports
-          _buildSectionTitle(LanguageService.surveyReports),
+          _buildSectionTitle(translate('surveyReports')),
           const SizedBox(height: 12),
           _buildReportGrid([
-            _buildReportItem(LanguageService.pricePrincipal, Icons.attach_money, Colors.blue),
-            _buildReportItem(LanguageService.priceCompetitor, Icons.compare, Colors.purple),
-            _buildReportItem(LanguageService.promoTracking, Icons.local_offer, Colors.pink),
-            _buildReportItem(LanguageService.competitorActivity, Icons.trending_up, Colors.indigo),
+            _buildReportItem(translate('pricePrincipal'), Icons.attach_money, Colors.blue),
+            _buildReportItem(translate('priceCompetitor'), Icons.compare, Colors.purple),
+            _buildReportItem(translate('promoTracking'), Icons.local_offer, Colors.pink),
+            _buildReportItem(translate('competitorActivity'), Icons.trending_up, Colors.indigo),
           ]),
         ],
       ),
@@ -329,36 +341,47 @@ class _ReportsScreenState extends State<ReportsScreen> {
   }
 
   Widget _buildUnknownRoleReports() {
-    return const Center(
+    return SingleChildScrollView(
       child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(
-            Icons.error_outline,
-            size: 64,
-            color: Colors.grey,
-          ),
-          SizedBox(height: 16),
-          Text(
-            'Unknown Role',
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-              color: Colors.grey,
-            ),
-          ),
-          SizedBox(height: 8),
-          Text(
-            'No reports available for this role',
-            style: TextStyle(
-              fontSize: 14,
-              color: Colors.grey,
-            ),
-          ),
+          // Daily Reports - Available for all roles
+          _buildSectionTitle(translate('dailyReports')),
+          const SizedBox(height: 12),
+          _buildReportGrid([
+            _buildReportItem(translate('sales'), Icons.shopping_cart, const Color(0xFF29BDCE)),
+            _buildReportItem(translate('oos'), Icons.inventory_2, Colors.red),
+            _buildReportItem(translate('expiredDate'), Icons.calendar_today, Colors.orange),
+            _buildReportItem(translate('pricePrincipal'), Icons.attach_money, Colors.blue),
+            _buildReportItem(translate('priceCompetitor'), Icons.compare, Colors.purple),
+            _buildReportItem(translate('survey'), Icons.assignment, Colors.green),
+          ]),
+          
+          const SizedBox(height: 24),
+          
+          // Display Reports
+          _buildSectionTitle(translate('displayReports')),
+          const SizedBox(height: 12),
+          _buildReportGrid([
+            _buildReportItem(translate('regularDisplay'), Icons.storefront, const Color(0xFF1E9BA8)),
+          ]),
+          
+          const SizedBox(height: 24),
+          
+          // Survey Reports
+          _buildSectionTitle(translate('surveyReports')),
+          const SizedBox(height: 12),
+          _buildReportGrid([
+            _buildReportItem(translate('pricePrincipal'), Icons.attach_money, Colors.blue),
+            _buildReportItem(translate('priceCompetitor'), Icons.compare, Colors.purple),
+            _buildReportItem(translate('promoTracking'), Icons.local_offer, Colors.pink),
+            _buildReportItem(translate('competitorActivity'), Icons.trending_up, Colors.indigo),
+          ]),
         ],
       ),
     );
   }
+
 
   Widget _buildReportGrid(List<Widget> items) {
     return GridView.builder(
@@ -428,26 +451,32 @@ class _ReportsScreenState extends State<ReportsScreen> {
   }
 
   void _onReportTap(String reportName) {
-    if (reportName == 'Competitor Activity') {
+    print('🔍 Report tapped: "$reportName"');
+    if (reportName == 'Competitor Activity' || reportName == 'Aktivitas Kompetitor') {
       _navigateToCompetitorActivity();
     } else if (reportName == 'Display') {
       _navigateToDisplayReport();
-    } else if (reportName == 'Expired Date') {
+    } else if (reportName == 'Expired Date' || reportName == 'Tanggal Kedaluwarsa') {
       _navigateToExpiredDateReport();
-    } else if (reportName == 'OOS') {
+    } else if (reportName == 'OOS' || reportName == 'Stok Habis') {
       _navigateToOutOfStockReport();
-    } else if (reportName == 'Price Principal' || reportName == 'Price Competitor') {
+    } else if (reportName == 'Price Principal' || reportName == 'Price Competitor' || 
+               reportName == 'Harga Principal' || reportName == 'Harga Kompetitor') {
       _navigateToPriceReport(reportName);
     } else if (reportName == 'Product Belgian Berry') {
       _navigateToProductBelgianBerryReport();
-    } else if (reportName == 'Product Focus') {
+    } else if (reportName == 'Product Focus' || reportName == 'Fokus Produk') {
       _navigateToProductFocusReport();
-    } else if (reportName == 'Promo Tracking') {
+    } else if (reportName == 'Promo Tracking' || reportName == 'Pelacakan Promo') {
       _navigateToPromoTrackingReport();
-    } else if (reportName == 'Regular Display') {
+    } else if (reportName == 'Regular Display' || reportName == 'Display Reguler') {
       _navigateToRegularDisplayReport();
     } else if (reportName == 'Survey') {
       _navigateToSurveyReport();
+    } else if (reportName == 'Sales' || reportName == 'Penjualan') {
+      print('🎯 Navigating to Sales Report...');
+      print('🎯 Sales Report button clicked successfully!');
+      _navigateToSalesReport();
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -637,7 +666,11 @@ class _ReportsScreenState extends State<ReportsScreen> {
       final todayRecord = await attendanceService.getTodayRecord();
 
       if (todayRecord != null && todayRecord.storeId != null && todayRecord.storeName != null) {
-        if (reportName == 'Price Principal') {
+        print('🎯 Navigating to Price Report: $reportName');
+        print('🏪 Store ID: ${todayRecord.storeId}, Store Name: ${todayRecord.storeName}');
+        
+        if (reportName == 'Price Principal' || reportName == 'Harga Principal') {
+          print('✅ Opening Price Principal Report...');
           Navigator.of(context).push(
             MaterialPageRoute(
               builder: (context) => PricePrincipalReportScreen(
@@ -646,7 +679,8 @@ class _ReportsScreenState extends State<ReportsScreen> {
               ),
             ),
           );
-        } else if (reportName == 'Price Competitor') {
+        } else if (reportName == 'Price Competitor' || reportName == 'Harga Kompetitor') {
+          print('✅ Opening Price Competitor Report...');
           Navigator.of(context).push(
             MaterialPageRoute(
               builder: (context) => PriceCompetitorReportScreen(
@@ -655,6 +689,8 @@ class _ReportsScreenState extends State<ReportsScreen> {
               ),
             ),
           );
+        } else {
+          print('❌ Unknown price report name: $reportName');
         }
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -886,4 +922,61 @@ class _ReportsScreenState extends State<ReportsScreen> {
       );
     }
   }
+
+  Future<void> _navigateToSalesReport() async {
+    print('🚀 _navigateToSalesReport called');
+    try {
+      // Get current store information from attendance service
+      final attendanceService = AttendanceService();
+      final todayRecord = await attendanceService.getTodayRecord();
+      
+      print('📋 Today record: ${todayRecord != null ? "exists" : "null"}');
+      if (todayRecord != null) {
+        print('🏪 Store ID: ${todayRecord.storeId}');
+        print('🏪 Store Name: ${todayRecord.storeName}');
+      }
+
+      if (todayRecord != null && todayRecord.storeId != null && todayRecord.storeName != null) {
+        print('✅ All conditions met, navigating to SalesReportScreen...');
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (context) => SalesReportScreen(
+              storeId: todayRecord.storeId!,
+              storeName: todayRecord.storeName!,
+            ),
+          ),
+        );
+      } else {
+        print('❌ Conditions not met, showing error message');
+        print('   - todayRecord: ${todayRecord != null ? "exists" : "null"}');
+        if (todayRecord != null) {
+          print('   - storeId: ${todayRecord.storeId}');
+          print('   - storeName: ${todayRecord.storeName}');
+        }
+      
+        // For testing, let's allow opening Sales Report even without attendance
+        print('🧪 Testing mode: Opening Sales Report with default values...');
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (context) => SalesReportScreen(
+              storeId: 4, // Default store ID for testing
+              storeName: 'JENDERAL SUDIRMAN 12', // Default store name for testing
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error: $e'),
+          backgroundColor: Colors.red,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(8),
+          ),
+        ),
+      );
+    }
+  }
+
 }

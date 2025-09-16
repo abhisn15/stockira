@@ -1,6 +1,8 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:flutter_translate/flutter_translate.dart';
+import 'dart:io';
 import '../../../models/competitor_activity.dart';
 import '../../../services/competitor_activity_service.dart';
 import '../../../widgets/cute_loading_widget.dart';
@@ -99,7 +101,7 @@ class _CompetitorActivityScreenState extends State<CompetitorActivityScreen> {
             children: [
               ListTile(
                 leading: const Icon(Icons.photo_library),
-                title: const Text('Gallery'),
+                title: Text(translate('gallery')),
                 onTap: () {
                   Navigator.of(context).pop();
                   _pickImageFromSource(ImageSource.gallery);
@@ -107,7 +109,7 @@ class _CompetitorActivityScreenState extends State<CompetitorActivityScreen> {
               ),
               ListTile(
                 leading: const Icon(Icons.photo_camera),
-                title: const Text('Camera'),
+                title: Text(translate('camera')),
                 onTap: () {
                   Navigator.of(context).pop();
                   _pickImageFromSource(ImageSource.camera);
@@ -162,7 +164,7 @@ class _CompetitorActivityScreenState extends State<CompetitorActivityScreen> {
         return StatefulBuilder(
           builder: (context, setDialogState) {
             return AlertDialog(
-              title: const Text('Select Products'),
+              title: Text(translate('selectProducts')),
               content: SizedBox(
                 width: double.maxFinite,
                 child: ListView.builder(
@@ -193,14 +195,14 @@ class _CompetitorActivityScreenState extends State<CompetitorActivityScreen> {
                   onPressed: () {
                     Navigator.of(context).pop();
                   },
-                  child: const Text('Cancel'),
+                  child: Text(translate('cancel')),
                 ),
                 ElevatedButton(
                   onPressed: () {
                     setState(() {});
                     Navigator.of(context).pop();
                   },
-                  child: const Text('Done'),
+                  child: Text(translate('done')),
                 ),
               ],
             );
@@ -232,37 +234,37 @@ class _CompetitorActivityScreenState extends State<CompetitorActivityScreen> {
     }
 
     if (_selectedPrincipalId == null) {
-      _showErrorSnackBar('Please select a principal');
+      _showErrorSnackBar(translate('pleaseSelectAPrincipal'));
       return;
     }
 
     if (_selectedTypePromotionId == null) {
-      _showErrorSnackBar('Please select a type promotion');
+      _showErrorSnackBar(translate('pleaseSelectATypePromotion'));
       return;
     }
 
     if (_selectedStartDate == null) {
-      _showErrorSnackBar('Please select start date');
+      _showErrorSnackBar(translate('pleaseSelectStartDate'));
       return;
     }
 
     if (_selectedEndDate == null) {
-      _showErrorSnackBar('Please select end date');
+      _showErrorSnackBar(translate('pleaseSelectEndDate'));
       return;
     }
 
     if (_selectedProducts.isEmpty) {
-      _showErrorSnackBar('Please select at least one product');
+      _showErrorSnackBar(translate('pleaseSelectAtLeastOneProduct'));
       return;
     }
 
     if (_isAdditionalDisplay && _selectedTypeAdditionalId == null) {
-      _showErrorSnackBar('Please select additional display type');
+      _showErrorSnackBar(translate('pleaseSelectAdditionalDisplayType'));
       return;
     }
 
     if (_isPosm && _selectedTypePosmId == null) {
-      _showErrorSnackBar('Please select POSM type');
+      _showErrorSnackBar(translate('pleaseSelectPOSMType'));
       return;
     }
 
@@ -291,7 +293,7 @@ class _CompetitorActivityScreenState extends State<CompetitorActivityScreen> {
       });
 
       if (response.success) {
-        _showSuccessSnackBar('Competitor activity submitted successfully!');
+        _showSuccessSnackBar(translate('competitorActivitySubmittedSuccessfully'));
         Navigator.of(context).pop();
       } else {
         _showErrorSnackBar(response.message);
@@ -300,7 +302,7 @@ class _CompetitorActivityScreenState extends State<CompetitorActivityScreen> {
       setState(() {
         _isLoading = false;
       });
-      _showErrorSnackBar('Error submitting form: $e');
+      _showErrorSnackBar(translate('errorSubmittingForm') + ': $e');
     }
   }
 
@@ -327,13 +329,13 @@ class _CompetitorActivityScreenState extends State<CompetitorActivityScreen> {
     if (_isLoadingData) {
       return Scaffold(
         appBar: AppBar(
-          title: const Text('Competitor Activity'),
+          title: Text(translate('competitorActivity')),
           backgroundColor: const Color(0xFF29BDCE),
           foregroundColor: Colors.white,
         ),
-        body: const Center(
+        body: Center(
           child: CuteLoadingWidget(
-            message: 'Loading data...',
+            message: translate('loadingData'),
             size: 80,
             primaryColor: Color(0xFF29BDCE),
           ),
@@ -343,7 +345,7 @@ class _CompetitorActivityScreenState extends State<CompetitorActivityScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Competitor Activity'),
+        title: Text(translate('competitorActivity')),
         backgroundColor: const Color(0xFF29BDCE),
         foregroundColor: Colors.white,
       ),
@@ -379,8 +381,8 @@ class _CompetitorActivityScreenState extends State<CompetitorActivityScreen> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const Text(
-                              'Store',
+                            Text(
+                              translate('store'),
                               style: TextStyle(
                                 fontSize: 12,
                                 color: Colors.grey,
@@ -389,7 +391,7 @@ class _CompetitorActivityScreenState extends State<CompetitorActivityScreen> {
                             ),
                             Text(
                               widget.storeName,
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontSize: 16,
                                 fontWeight: FontWeight.bold,
                                 color: Colors.black87,
@@ -406,7 +408,7 @@ class _CompetitorActivityScreenState extends State<CompetitorActivityScreen> {
 
               // Principal selection
               _buildDropdownField(
-                label: 'Principal *',
+                label: translate('principal') + ' *',
                 value: _selectedPrincipalId,
                 items: _productPrincipals.map((p) => DropdownMenuItem(
                   value: p.id,
@@ -421,7 +423,7 @@ class _CompetitorActivityScreenState extends State<CompetitorActivityScreen> {
 
               // Type promotion selection
               _buildDropdownField(
-                label: 'Type Promotion *',
+                label: translate('typePromotion') + ' *',
                 value: _selectedTypePromotionId,
                 items: _typePromotions.map((t) => DropdownMenuItem(
                   value: t.id,
@@ -436,11 +438,11 @@ class _CompetitorActivityScreenState extends State<CompetitorActivityScreen> {
 
               // Promo mechanism
               _buildTextFormField(
-                label: 'Promo Mechanism *',
+                label: translate('promoMechanism') + ' *',
                 controller: _promoMechanismController,
                 validator: (value) {
                   if (value == null || value.trim().isEmpty) {
-                    return 'Please enter promo mechanism';
+                    return translate('pleaseEnterPromoMechanism');
                   }
                   return null;
                 },
@@ -451,7 +453,7 @@ class _CompetitorActivityScreenState extends State<CompetitorActivityScreen> {
                 children: [
                   Expanded(
                     child: _buildDateField(
-                      label: 'Start Date *',
+                      label: translate('startDate') + ' *',
                       date: _selectedStartDate,
                       onTap: () => _selectDate(context, true),
                     ),
@@ -459,7 +461,7 @@ class _CompetitorActivityScreenState extends State<CompetitorActivityScreen> {
                   const SizedBox(width: 12),
                   Expanded(
                     child: _buildDateField(
-                      label: 'End Date *',
+                      label: translate('endDate') + ' *',
                       date: _selectedEndDate,
                       onTap: () => _selectDate(context, false),
                     ),
@@ -476,7 +478,7 @@ class _CompetitorActivityScreenState extends State<CompetitorActivityScreen> {
 
               // Additional display toggle
               _buildToggleField(
-                label: 'Additional Display',
+                label: translate('additionalDisplay'),
                 value: _isAdditionalDisplay,
                 onChanged: (value) {
                   setState(() {
@@ -491,7 +493,7 @@ class _CompetitorActivityScreenState extends State<CompetitorActivityScreen> {
               // Type additional selection (conditional)
               if (_isAdditionalDisplay)
                 _buildDropdownField(
-                  label: 'Type Additional *',
+                  label: translate('typeAdditional') + ' *',
                   value: _selectedTypeAdditionalId,
                   items: _typeAdditionals.map((t) => DropdownMenuItem(
                     value: t.id,
@@ -508,7 +510,7 @@ class _CompetitorActivityScreenState extends State<CompetitorActivityScreen> {
 
               // POSM toggle
               _buildToggleField(
-                label: 'POSM',
+                label: translate('posm'),
                 value: _isPosm,
                 onChanged: (value) {
                   setState(() {
@@ -523,7 +525,7 @@ class _CompetitorActivityScreenState extends State<CompetitorActivityScreen> {
               // Type POSM selection (conditional)
               if (_isPosm)
                 _buildDropdownField(
-                  label: 'Type POSM *',
+                  label: translate('typePosm') + ' *',
                   value: _selectedTypePosmId,
                   items: _typePosms.map((t) => DropdownMenuItem(
                     value: t.id,
@@ -565,8 +567,8 @@ class _CompetitorActivityScreenState extends State<CompetitorActivityScreen> {
                             valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
                           ),
                         )
-                      : const Text(
-                          'Submit Competitor Activity',
+                      : Text(
+                          translate('submitCompetitorActivity'),
                           style: TextStyle(
                             fontSize: 16,
                             fontWeight: FontWeight.w600,
@@ -632,7 +634,7 @@ class _CompetitorActivityScreenState extends State<CompetitorActivityScreen> {
                           Expanded(
                             child: Text(
                               _selectedProducts.isNotEmpty
-                                ? '${_selectedProducts.length} product(s) selected'
+                                ? '${_selectedProducts.length} ${translate('product')}(s) ${translate('selected')}'
                                 : 'Search and select products...',
                               style: TextStyle(
                                 fontSize: 14,
@@ -660,7 +662,7 @@ class _CompetitorActivityScreenState extends State<CompetitorActivityScreen> {
                       child: TextField(
                         controller: _productsController,
                         decoration: InputDecoration(
-                          hintText: 'Type to search products...',
+                          hintText: translate('typeToSearchProducts') + '...',
                           prefixIcon: const Icon(Icons.search, size: 18),
                           border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(6),
@@ -754,7 +756,7 @@ class _CompetitorActivityScreenState extends State<CompetitorActivityScreen> {
                     Container(
                       padding: const EdgeInsets.all(16),
                       child: Text(
-                        'No products found for "${_productsController.text}"',
+                        translate('noProductsFoundFor') + ' "${_productsController.text}"',
                         style: TextStyle(
                           fontSize: 12,
                           color: Colors.grey[600],
@@ -795,7 +797,7 @@ class _CompetitorActivityScreenState extends State<CompetitorActivityScreen> {
                   items: items,
                   onChanged: onChanged,
                   isExpanded: true,
-                  hint: Text('Select ${label.replaceAll('*', '').trim()}'),
+                  hint: Text(translate('select') + ' ${label.replaceAll('*', '').trim()}'),
                 ),
               ),
             ),
@@ -935,7 +937,7 @@ class _CompetitorActivityScreenState extends State<CompetitorActivityScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Products *',
+            translate('products') + ' *',
             style: const TextStyle(
               fontSize: 14,
               fontWeight: FontWeight.w600,
@@ -958,8 +960,8 @@ class _CompetitorActivityScreenState extends State<CompetitorActivityScreen> {
                   Expanded(
                     child: Text(
                       _selectedProducts.isEmpty
-                          ? 'Select products'
-                          : '${_selectedProducts.length} products selected',
+                          ? translate('selectProducts')
+                          : '${_selectedProducts.length} ${translate('product')}(s) ${translate('selected')}',
                       style: TextStyle(
                         color: _selectedProducts.isEmpty ? Colors.grey[600] : Colors.black87,
                       ),
@@ -1006,8 +1008,8 @@ class _CompetitorActivityScreenState extends State<CompetitorActivityScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Photo (Optional)',
-            style: const TextStyle(
+            translate('photo') + ' (Optional)',
+            style: TextStyle(
               fontSize: 14,
               fontWeight: FontWeight.w600,
               color: Colors.black87,
@@ -1041,7 +1043,7 @@ class _CompetitorActivityScreenState extends State<CompetitorActivityScreen> {
                         ),
                         const SizedBox(height: 8),
                         Text(
-                          'Tap to add photo',
+                          translate('tapToAddPhoto'),
                           style: TextStyle(
                             color: Colors.grey[600],
                             fontSize: 14,

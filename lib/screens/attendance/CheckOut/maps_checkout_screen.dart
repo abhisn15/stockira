@@ -6,6 +6,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../../services/attendance_service.dart';
 import '../../../models/attendance_record.dart';
+import 'package:flutter_translate/flutter_translate.dart';
 
 class MapsCheckoutScreen extends StatefulWidget {
   final AttendanceRecord currentRecord;
@@ -35,6 +36,12 @@ class _MapsCheckoutScreenState extends State<MapsCheckoutScreen> {
   @override
   void initState() {
     super.initState();
+    print('🏪 Checkout Screen - Store Name: ${widget.currentRecord.storeName}');
+    print('🏪 Checkout Screen - Store ID: ${widget.currentRecord.storeId}');
+    print('🏪 Checkout Screen - Details count: ${widget.currentRecord.details.length}');
+    if (widget.currentRecord.details.isNotEmpty) {
+      print('🏪 Checkout Screen - First detail store name: ${widget.currentRecord.details.first.storeName}');
+    }
     _getCurrentLocation();
   }
 
@@ -151,18 +158,26 @@ class _MapsCheckoutScreenState extends State<MapsCheckoutScreen> {
 
 
   double _getDistanceToStore() {
-    if (_currentPosition == null || widget.currentRecord.details.isEmpty) {
+    if (_currentPosition == null) {
       return double.infinity;
     }
 
-    // Use the first detail's check-in location as store location
-    final detail = widget.currentRecord.details.first;
-    return Geolocator.distanceBetween(
-      _currentPosition!.latitude,
-      _currentPosition!.longitude,
-      detail.latitudeIn,
-      detail.longitudeIn,
-    );
+    // Use the check-in location from the record
+    if (widget.currentRecord.details.isNotEmpty) {
+      final detail = widget.currentRecord.details.first;
+      final distance = Geolocator.distanceBetween(
+        _currentPosition!.latitude,
+        _currentPosition!.longitude,
+        detail.latitudeIn,
+        detail.longitudeIn,
+      );
+      print('📏 Distance to store: ${distance.toStringAsFixed(0)}m');
+      return distance;
+    }
+
+    // Fallback: if no details, return 0 (assume at store)
+    print('📏 No store details found, assuming at store (0m)');
+    return 0.0;
   }
 
   void _updateMarkersSimple() {
@@ -210,12 +225,26 @@ class _MapsCheckoutScreenState extends State<MapsCheckoutScreen> {
   }
 
   Future<void> _goToTargetLocation() async {
-    if (_mapController == null || widget.currentRecord.details.isEmpty) {
+    if (_mapController == null) {
+      print('❌ Map controller not available');
+      return;
+    }
+
+    if (widget.currentRecord.details.isEmpty) {
+      print('❌ No store details available for navigation');
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Store location not available'),
+          backgroundColor: Colors.orange,
+        ),
+      );
       return;
     }
 
     try {
       final detail = widget.currentRecord.details.first;
+      print('🎯 Navigating to store location: ${detail.latitudeIn}, ${detail.longitudeIn}');
+      
       await _mapController!.animateCamera(
         CameraUpdate.newLatLng(
           LatLng(
@@ -224,8 +253,16 @@ class _MapsCheckoutScreenState extends State<MapsCheckoutScreen> {
           ),
         ),
       );
+      
+      print('✅ Successfully navigated to store location');
     } catch (e) {
       print('❌ Error going to target: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to navigate to store: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
     }
   }
 
@@ -337,17 +374,10 @@ class _MapsCheckoutScreenState extends State<MapsCheckoutScreen> {
   }
 
   Future<void> _submitCheckout() async {
-    if (_selectedImage == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please take a photo first'),
-          backgroundColor: Colors.orange,
-        ),
-      );
-      return;
-    }
-
-    // Note is now optional, no validation needed
+    // Photo and note are now optional - can submit without them
+    print('🔄 Submitting checkout...');
+    print('📸 Photo selected: ${_selectedImage != null}');
+    print('📝 Note: "${_noteController.text.trim()}"');
 
     try {
       setState(() {
@@ -355,7 +385,7 @@ class _MapsCheckoutScreenState extends State<MapsCheckoutScreen> {
       });
 
       await AttendanceService().checkOut(
-        image: _selectedImage!,
+        image: _selectedImage, // Now optional - can be null
         note: _noteController.text.trim().isEmpty ? 'Checkout completed' : _noteController.text.trim(),
       );
 
@@ -386,9 +416,6 @@ class _MapsCheckoutScreenState extends State<MapsCheckoutScreen> {
     }
   }
 
-  String _formatTime(DateTime dateTime) {
-    return '${dateTime.hour.toString().padLeft(2, '0')}:${dateTime.minute.toString().padLeft(2, '0')}';
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -553,9 +580,7 @@ class _MapsCheckoutScreenState extends State<MapsCheckoutScreen> {
                         ),
                       ),
                       Text(
-                        widget.currentRecord.details.isNotEmpty 
-                            ? widget.currentRecord.details.first.storeName 
-                            : 'Unknown Store',
+                        widget.currentRecord.storeName ?? 'Unknown Store',
                         style: TextStyle(
                           fontSize: isSmallScreen ? 12 : 14,
                           color: Colors.grey[600],
@@ -833,7 +858,7 @@ class _MapsCheckoutScreenState extends State<MapsCheckoutScreen> {
                     SizedBox(width: isSmallScreen ? 6 : 8),
                     Expanded(
                       child: Text(
-                        'Photo captured! Tap "Take Photo" again to change or wait for auto-submit dialog.',
+                        translate('photoCaptured'),
                         style: TextStyle(
                           fontSize: isSmallScreen ? 10 : 12,
                           color: Colors.green[700],

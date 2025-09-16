@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import '../../../services/language_service.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:flutter_translate/flutter_translate.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:image_picker/image_picker.dart';
 import 'dart:io';
@@ -8,7 +8,6 @@ import 'dart:async';
 import '../../../models/itinerary.dart';
 import '../../../services/attendance_service.dart';
 import '../../../services/maps_service.dart';
-import '../../../widgets/safe_google_map.dart';
 
 class MapsCheckinScreen extends StatefulWidget {
   final List<Itinerary> itineraryList;
@@ -75,8 +74,8 @@ class _MapsCheckinScreenState extends State<MapsCheckinScreen> {
       
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(LanguageService.locationRefreshedSuccessfully),
+          SnackBar(
+            content: Text(translate('locationRefreshedSuccessfully')),
             backgroundColor: Colors.green,
             duration: Duration(seconds: 2),
           ),
@@ -87,7 +86,7 @@ class _MapsCheckinScreenState extends State<MapsCheckinScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('${LanguageService.failedToRefreshLocation}: $e'),
+            content: Text('${translate('failedToRefreshLocation')}: $e'),
             backgroundColor: Colors.red,
             duration: const Duration(seconds: 3),
           ),
@@ -179,15 +178,15 @@ class _MapsCheckinScreenState extends State<MapsCheckinScreen> {
         
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('${LanguageService.usingDefaultLocation}: $e'),
+            content: Text('${translate('usingDefaultLocation')}: $e'),
             backgroundColor: Colors.orange,
             action: SnackBarAction(
               label: 'Settings',
               onPressed: () {
                 // Open app settings - in real app, use app_settings plugin
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text(LanguageService.pleaseEnableLocationPermissions),
+                  SnackBar(
+                    content: Text(translate('pleaseEnableLocationPermissions')),
                   ),
                 );
               },
@@ -295,7 +294,7 @@ class _MapsCheckinScreenState extends State<MapsCheckinScreen> {
             children: [
               ListTile(
                 leading: const Icon(Icons.camera_alt),
-                title: Text(LanguageService.takePhoto),
+                title: Text(translate('takePhoto')),
                 onTap: () async {
                   Navigator.pop(context);
                   try {
@@ -314,7 +313,7 @@ class _MapsCheckinScreenState extends State<MapsCheckinScreen> {
                     if (mounted) {
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
-                          content: Text('${LanguageService.errorTakingPicture}: $e'),
+                          content: Text('${translate('errorTakingPicture')}: $e'),
                           backgroundColor: Colors.red,
                         ),
                       );
@@ -324,7 +323,7 @@ class _MapsCheckinScreenState extends State<MapsCheckinScreen> {
               ),
               ListTile(
                 leading: const Icon(Icons.photo_library),
-                title: Text(LanguageService.chooseFromGallery),
+                title: Text(translate('chooseFromGallery')),
                 onTap: () async {
                   Navigator.pop(context);
                   try {
@@ -343,7 +342,7 @@ class _MapsCheckinScreenState extends State<MapsCheckinScreen> {
                     if (mounted) {
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
-                          content: Text('${LanguageService.errorSelectingImage}: $e'),
+                          content: Text('${translate('errorSelectingImage')}: $e'),
                           backgroundColor: Colors.red,
                         ),
                       );
@@ -366,8 +365,8 @@ class _MapsCheckinScreenState extends State<MapsCheckinScreen> {
 
     if (!_isDistanceValid || !_isPhotoValid || !_isNoteValid) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(LanguageService.pleaseCompleteAllRequirements),
+        SnackBar(
+          content: Text(translate('pleaseCompleteAllRequirements')),
           backgroundColor: Colors.orange,
         ),
       );
@@ -378,16 +377,16 @@ class _MapsCheckinScreenState extends State<MapsCheckinScreen> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text(LanguageService.confirmCheckIn),
+        title: Text(translate('confirmCheckIn')),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(LanguageService.areYouSureCheckIn),
+            Text(translate('areYouSureCheckIn')),
             const SizedBox(height: 16),
-            Text('${LanguageService.store}: ${_selectedStore!.name}'),
-            Text('${LanguageService.distance}: ${_formatDistance(_getDistanceToStore())}'),
-            Text('${LanguageService.time}: ${_formatDateTime(_currentTime)}'),
+            Text('${translate('store')}: ${_selectedStore!.name}'),
+            Text('${translate('distance')}: ${_formatDistance(_getDistanceToStore())}'),
+            Text('${translate('time')}: ${_formatDateTime(_currentTime)}'),
           ],
         ),
         actions: [

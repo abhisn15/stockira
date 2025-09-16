@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 import '../../../models/expired_date_report.dart';
 import '../../../services/expired_date_service.dart';
 import '../../../widgets/cute_loading_widget.dart';
+import 'package:flutter_translate/flutter_translate.dart';
 
 class ExpiredDateReportScreen extends StatefulWidget {
   final int storeId;
@@ -301,10 +302,10 @@ class _ExpiredDateReportScreenState extends State<ExpiredDateReportScreen> {
                     border: Border.all(color: Colors.grey[300]!),
                     borderRadius: BorderRadius.circular(8),
                   ),
-                  child: const Center(
+                  child: Center(
                     child: Text(
-                      'No items added yet. Tap "Add Item" to start.',
-                      style: TextStyle(
+                      translate('noItemsAdded'),
+                      style: const TextStyle(
                         color: Colors.grey,
                         fontSize: 14,
                       ),

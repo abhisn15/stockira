@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import '../../services/language_service.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:flutter_translate/flutter_translate.dart';
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../services/permit_service.dart';
@@ -404,7 +405,7 @@ class _PermitScreenState extends State<PermitScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(LanguageService.permits),
+        title: Text(translate('permits')),
         backgroundColor: Colors.yellow[800],
         foregroundColor: Colors.white,
       ),
@@ -475,31 +476,31 @@ class _PermitScreenState extends State<PermitScreen> {
                                   items: [
                                     DropdownMenuItem<String>(
                                       value: 'sakit',
-                                      child: Text(LanguageService.sick),
+                                      child: Text(translate('sick')),
                                     ),
                                     DropdownMenuItem<String>(
                                       value: 'izin',
-                                      child: Text(LanguageService.leave),
+                                      child: Text(translate('leave')),
                                     ),
                                     DropdownMenuItem<String>(
                                       value: 'cuti',
-                                      child: Text(LanguageService.vacation),
+                                      child: Text(translate('vacation')),
                                     ),
                                     DropdownMenuItem<String>(
                                       value: 'off',
-                                      child: Text(LanguageService.off),
+                                      child: Text(translate('off')),
                                     ),
                                     DropdownMenuItem<String>(
                                       value: 'store_closed',
-                                      child: Text(LanguageService.storeClosed),
+                                      child: Text(translate('storeClosed')),
                                     ),
                                     DropdownMenuItem<String>(
                                       value: 'izin_khusus',
-                                      child: Text(LanguageService.specialLeave),
+                                      child: Text(translate('specialLeave')),
                                     ),
                                     DropdownMenuItem<String>(
                                       value: 'extra_off',
-                                      child: Text(LanguageService.extraOff),
+                                      child: Text(translate('extraOff')),
                                     ),
                                   ],
                                   onChanged: (value) {
@@ -536,11 +537,11 @@ class _PermitScreenState extends State<PermitScreen> {
                                   items: [
                                     DropdownMenuItem<String>(
                                       value: 'Full day',
-                                      child: Text(LanguageService.fullDay),
+                                      child: Text(translate('fullDay')),
                                     ),
                                     DropdownMenuItem<String>(
                                       value: 'Half day',
-                                      child: Text(LanguageService.halfDay),
+                                      child: Text(translate('halfDay')),
                                     ),
                                   ],
                                   onChanged: (value) {
@@ -574,7 +575,7 @@ class _PermitScreenState extends State<PermitScreen> {
                                       child: Column(
                                         crossAxisAlignment: CrossAxisAlignment.start,
                                         children: [
-                                          Text(LanguageService.startDate),
+                                          Text(translate('startDate')),
                                           const SizedBox(height: 8),
                                           InkWell(
                                             onTap: () async {
@@ -623,7 +624,7 @@ class _PermitScreenState extends State<PermitScreen> {
                                       child: Column(
                                         crossAxisAlignment: CrossAxisAlignment.start,
                                         children: [
-                                          Text(LanguageService.endDate),
+                                          Text(translate('endDate')),
                                           const SizedBox(height: 8),
                                           InkWell(
                                             onTap: () async {
@@ -739,7 +740,7 @@ class _PermitScreenState extends State<PermitScreen> {
                                             children: [
                                               const Icon(Icons.camera_alt, size: 48, color: Colors.grey),
                                               const SizedBox(height: 8),
-                                              Text(LanguageService.takePhoto),
+                                              Text(translate('takePhoto')),
                                             ],
                                           ),
                                   ),
@@ -1291,7 +1292,7 @@ class _PermitScreenState extends State<PermitScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(),
-            child: Text(LanguageService.close),
+            child: Text(translate('close')),
           ),
         ],
       ),

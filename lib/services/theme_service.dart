@@ -74,14 +74,6 @@ class ThemeService {
         foregroundColor: Colors.white,
         elevation: 0,
       ),
-      cardTheme: CardThemeData(
-        color: const Color(0xFF161B22), // Darker card background
-        elevation: 4,
-        shadowColor: Colors.black.withOpacity(0.3),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(8),
-        ),
-      ),
       listTileTheme: const ListTileThemeData(
         textColor: Colors.white,
         iconColor: Colors.white,
@@ -109,6 +101,12 @@ class ThemeService {
         labelLarge: TextStyle(color: Colors.white),
         labelMedium: TextStyle(color: Colors.white),
         labelSmall: TextStyle(color: Colors.white70),
+      ),
+      iconTheme: const IconThemeData(
+        color: Colors.white,
+      ),
+      primaryIconTheme: const IconThemeData(
+        color: Colors.white,
       ),
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
@@ -172,6 +170,20 @@ class ThemeService {
         backgroundColor: const Color(0xFF161B22),
         contentTextStyle: const TextStyle(color: Colors.white),
         actionTextColor: const Color.fromARGB(255, 41, 189, 206),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(8),
+        ),
+      ),
+      chipTheme: ChipThemeData(
+        backgroundColor: const Color(0xFF21262D),
+        labelStyle: const TextStyle(color: Colors.white),
+        secondaryLabelStyle: const TextStyle(color: Colors.white),
+        brightness: Brightness.dark,
+      ),
+      cardTheme: CardThemeData(
+        color: const Color(0xFF161B22),
+        elevation: 4,
+        shadowColor: Colors.black.withOpacity(0.3),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(8),
         ),

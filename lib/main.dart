@@ -5,14 +5,27 @@ import 'package:stockira/screens/dashboard/index.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:stockira/services/auth_service.dart';
 import 'package:stockira/services/theme_service.dart';
-import 'package:stockira/services/language_service.dart';
+import 'package:stockira/services/settings_service.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:flutter_translate/flutter_translate.dart';
+import 'package:intl/date_symbol_data_local.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await dotenv.load(fileName: ".env");
   await SharedPreferences.getInstance();
-  runApp(const MyApp());
+  
+  // Initialize locale data for intl package
+  await initializeDateFormatting('en', null);
+  await initializeDateFormatting('id', null);
+  
+  // Initialize flutter_translate
+  final delegate = await LocalizationDelegate.create(
+    fallbackLocale: 'en',
+    supportedLocales: ['en', 'id'],
+  );
+  
+  runApp(LocalizedApp(delegate, const MyApp()));
 }
 
 class MyApp extends StatefulWidget {
@@ -33,7 +46,9 @@ class _MyAppState extends State<MyApp> {
   }
 
   Future<void> _initializeLanguage() async {
-    await LanguageService.initialize();
+    // Get saved language from settings
+    final savedLanguage = await SettingsService.getLanguage();
+    changeLocale(context, savedLanguage);
   }
 
   Future<void> _loadTheme() async {
