@@ -244,5 +244,7 @@
   "pricePromo": "Price Promo",
   "valuePromo": "Value Promo",
   "totalValue": "Total Value",
-  "activityOther": "Activity Other"
+  "activityOther": "Activity Other",
+  "payslipComingSoon": "Payslip Coming Soon",
+  "payslipDescription": "The payslip feature is under development. You will be able to view and download your monthly payslips here."
 }

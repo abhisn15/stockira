@@ -244,5 +244,7 @@
   "pricePromo": "Harga Promo",
   "valuePromo": "Nilai Promo",
   "totalValue": "Total Nilai",
-  "activityOther": "Kegiatan Lain-lain"
+  "activityOther": "Kegiatan Lain-lain",
+  "payslipComingSoon": "Slip Gaji Akan Segera Hadir",
+  "payslipDescription": "Fitur slip gaji sedang dalam pengembangan. Anda akan dapat melihat dan mengunduh slip gaji bulanan Anda di sini."
 }
