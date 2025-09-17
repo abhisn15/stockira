@@ -14,6 +14,7 @@ import 'PromoTracking/index.dart';
 import 'RegularDisplay/index.dart';
 import 'Survey/index.dart';
 import 'Sales/index.dart';
+import 'ActivityOther/index.dart';
 import '../Availability/index.dart';
 
 class ReportsScreen extends StatefulWidget {
@@ -281,6 +282,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
             _buildReportItem(translate('competitorActivity'), Icons.trending_up, Colors.indigo),
             _buildReportItem(translate('survey'), Icons.assignment, Colors.green),
             _buildReportItem(translate('productBelgianBerry'), Icons.local_drink, Colors.brown),
+            _buildReportItem('Kegiatan Lain-lain', Icons.event_note, const Color(0xFF9C27B0)),
           ]),
         ],
       ),
@@ -323,6 +325,15 @@ class _ReportsScreenState extends State<ReportsScreen> {
             _buildReportItem(translate('priceCompetitor'), Icons.compare, Colors.purple),
             _buildReportItem(translate('promoTracking'), Icons.local_offer, Colors.pink),
             _buildReportItem(translate('competitorActivity'), Icons.trending_up, Colors.indigo),
+          ]),
+          
+          const SizedBox(height: 24),
+          
+          // Other Reports
+          _buildSectionTitle('Laporan Lain-lain'),
+          const SizedBox(height: 12),
+          _buildReportGrid([
+            _buildReportItem('Kegiatan Lain-lain', Icons.event_note, const Color(0xFF9C27B0)),
           ]),
         ],
       ),
@@ -376,6 +387,15 @@ class _ReportsScreenState extends State<ReportsScreen> {
             _buildReportItem(translate('priceCompetitor'), Icons.compare, Colors.purple),
             _buildReportItem(translate('promoTracking'), Icons.local_offer, Colors.pink),
             _buildReportItem(translate('competitorActivity'), Icons.trending_up, Colors.indigo),
+          ]),
+          
+          const SizedBox(height: 24),
+          
+          // Other Reports
+          _buildSectionTitle('Laporan Lain-lain'),
+          const SizedBox(height: 12),
+          _buildReportGrid([
+            _buildReportItem('Kegiatan Lain-lain', Icons.event_note, const Color(0xFF9C27B0)),
           ]),
         ],
       ),
@@ -463,7 +483,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
     } else if (reportName == 'Price Principal' || reportName == 'Price Competitor' || 
                reportName == 'Harga Principal' || reportName == 'Harga Kompetitor') {
       _navigateToPriceReport(reportName);
-    } else if (reportName == 'Product Belgian Berry') {
+    } else if (reportName == 'Product Belgian Berry' || reportName == 'Produk Belgian Berry') {
       _navigateToProductBelgianBerryReport();
     } else if (reportName == 'Product Focus' || reportName == 'Fokus Produk') {
       _navigateToProductFocusReport();
@@ -477,6 +497,8 @@ class _ReportsScreenState extends State<ReportsScreen> {
       print('🎯 Navigating to Sales Report...');
       print('🎯 Sales Report button clicked successfully!');
       _navigateToSalesReport();
+    } else if (reportName == 'Kegiatan Lain-lain') {
+      _navigateToActivityOtherReport();
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -966,6 +988,62 @@ class _ReportsScreenState extends State<ReportsScreen> {
         );
       }
     } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error: $e'),
+          backgroundColor: Colors.red,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(8),
+          ),
+        ),
+      );
+    }
+  }
+
+  Future<void> _navigateToActivityOtherReport() async {
+    try {
+      print('🚀 _navigateToActivityOtherReport called');
+      
+      // Get today's attendance record
+      final attendanceService = AttendanceService();
+      final todayRecord = await attendanceService.getTodayRecord();
+      
+      print('📋 Today record: ${todayRecord != null ? "exists" : "null"}');
+      
+      if (todayRecord != null && 
+          todayRecord.storeId != null && 
+          todayRecord.storeName != null &&
+          todayRecord.storeId! > 0 &&
+          todayRecord.storeName!.isNotEmpty) {
+        
+        print('🏪 Store ID: ${todayRecord.storeId}');
+        print('🏪 Store Name: ${todayRecord.storeName}');
+        print('✅ All conditions met, navigating to ActivityOtherScreen...');
+        
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (context) => ActivityOtherScreen(
+              storeId: todayRecord.storeId!,
+              storeName: todayRecord.storeName!,
+            ),
+          ),
+        );
+      } else {
+        print('❌ Conditions not met for Activity Other Report');
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text('Silakan check-in terlebih dahulu untuk mengakses laporan'),
+            backgroundColor: Colors.orange,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(8),
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      print('❌ Error in _navigateToActivityOtherReport: $e');
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Error: $e'),

@@ -29,21 +29,19 @@ class _SurveyReportScreenState extends State<SurveyReportScreen> {
   
   // Form controllers
   final TextEditingController _storeCodeController = TextEditingController();
-  final TextEditingController _freezerCountController = TextEditingController();
   final TextEditingController _skuCountController = TextEditingController();
   final TextEditingController _poTotalAmountController = TextEditingController();
   final TextEditingController _poTotalDuzController = TextEditingController();
   final TextEditingController _constraintController = TextEditingController();
-  final TextEditingController _noIdnFreezer1Controller = TextEditingController();
-  final TextEditingController _noIdnFreezer2Controller = TextEditingController();
   
   // Date and dropdown fields
   DateTime? _selectedDate;
-  int _selectedStoreCount = 1;
-  bool _isFormEnabled = false;
+  int _selectedFreezerCount = 1;
   
-  // Dynamic store forms
-  List<Map<String, dynamic>> _storeForms = [];
+  // Dynamic freezer forms - List of controllers for each freezer
+  List<TextEditingController> _freezerIdControllers = [];
+  List<TextEditingController> _freezerCountControllers = [];
+  List<TextEditingController> _skuCountControllers = [];
   
   // Boolean fields with photos
   Map<String, bool> _booleanFields = {
@@ -68,27 +66,6 @@ class _SurveyReportScreenState extends State<SurveyReportScreen> {
     'exist_po': false,
   };
 
-  Map<String, bool> _dynamicBooleanFields = {
-    'exist_sticker_crispy_ball': false,
-    'exist_sticker_mochi': false,
-    'exist_sticker_sharing_olympic': false,
-    'exist_price_board_olympic': false,
-    'exist_wobler_promo': false,
-    'exist_pop_promo': false,
-    'exist_price_board_led': false,
-    'exist_sticker_glass_mochi': false,
-    'exist_sticker_frame_crispy_balls': false,
-    'exist_freezer_backup': false,
-    'exist_drum_freezer': false,
-    'exist_crispy_balls_tier': false,
-    'exist_product_focus_crispy_ball': false,
-    'exist_product_focus_histeria_macha': false,
-    'exist_product_focus_almond_choco': false,
-    'exist_product_focus_almond_classic': false,
-    'exist_product_focus_histeria_peach': false,
-    'exist_product_focus_histeria_vanilla': false,
-    'exist_po': false,
-  };
   
   // Photo fields
   Map<String, File?> _photoFields = {
@@ -119,82 +96,60 @@ class _SurveyReportScreenState extends State<SurveyReportScreen> {
   void initState() {
     super.initState();
     _selectedDate = DateTime.now();
-    _initializeStoreForms();
+    _initializeFreezerForms();
   }
 
-  void _initializeStoreForms() {
-    _storeForms = List.generate(_selectedStoreCount, (index) => {
-      'store_id': widget.storeId,
-      'store_name': widget.storeName,
-      'freezer_count': 0,
-      'sku_count': 0,
-      'no_idn_freezer_1': '',
-      'no_idn_freezer_2': '',
-      'photo_idn_freezer_1': null,
-      'photo_idn_freezer_2': null,
-      'freezer_position_image': null,
-      'exist_freezer_backup': false,
-      'photo_freezer_backup': null,
-      'exist_drum_freezer': false,
-      'photo_drum_freezer': null,
-      'exist_sticker_crispy_ball': false,
-      'photo_sticker_crispy_ball': null,
-      'exist_sticker_mochi': false,
-      'photo_sticker_mochi': null,
-      'exist_sticker_sharing_olympic': false,
-      'photo_sticker_sharing_olympic': null,
-      'exist_price_board_olympic': false,
-      'photo_price_board_olympic': null,
-      'exist_wobler_promo': false,
-      'photo_wobler_promo': null,
-      'exist_pop_promo': false,
-      'photo_pop_promo': null,
-      'exist_price_board_led': false,
-      'photo_price_board_led': null,
-      'exist_sticker_glass_mochi': false,
-      'photo_sticker_glass_mochi': null,
-      'exist_sticker_frame_crispy_balls': false,
-      'photo_sticker_frame_crispy_balls': null,
-      'exist_crispy_balls_tier': false,
-      'photo_crispy_balls_tier': null,
-      'exist_product_focus_crispy_ball': false,
-      'exist_product_focus_histeria_macha': false,
-      'exist_product_focus_almond_choco': false,
-      'exist_product_focus_almond_classic': false,
-      'exist_product_focus_histeria_peach': false,
-      'exist_product_focus_histeria_vanilla': false,
-      'photo_promo_running': null,
-      'exist_po': false,
-      'po_total_amount': 0,
-      'po_total_duz': 0,
-      'constraint': '',
-    });
+  void _initializeFreezerForms() {
+    // Clear existing controllers
+    for (var controller in _freezerIdControllers) {
+      controller.dispose();
+    }
+    for (var controller in _freezerCountControllers) {
+      controller.dispose();
+    }
+    for (var controller in _skuCountControllers) {
+      controller.dispose();
+    }
+    
+    _freezerIdControllers.clear();
+    _freezerCountControllers.clear();
+    _skuCountControllers.clear();
+    
+    // Initialize controllers based on selected freezer count
+    for (int i = 0; i < _selectedFreezerCount; i++) {
+      _freezerIdControllers.add(TextEditingController());
+      _freezerCountControllers.add(TextEditingController());
+      _skuCountControllers.add(TextEditingController());
+    }
   }
 
-  void _onStoreCountChanged(int newCount) {
+  void _onFreezerCountChanged(int newCount) {
     setState(() {
-      _selectedStoreCount = newCount;
-      _isFormEnabled = false; // Reset form enabled state
-      _initializeStoreForms();
+      _selectedFreezerCount = newCount;
+      _initializeFreezerForms();
     });
   }
 
-  void _toggleFormEnabled() {
-    setState(() {
-      _isFormEnabled = !_isFormEnabled;
-    });
-  }
 
   @override
   void dispose() {
     _storeCodeController.dispose();
-    _freezerCountController.dispose();
     _skuCountController.dispose();
     _poTotalAmountController.dispose();
     _poTotalDuzController.dispose();
     _constraintController.dispose();
-    _noIdnFreezer1Controller.dispose();
-    _noIdnFreezer2Controller.dispose();
+    
+    // Dispose all dynamic controllers
+    for (var controller in _freezerIdControllers) {
+      controller.dispose();
+    }
+    for (var controller in _freezerCountControllers) {
+      controller.dispose();
+    }
+    for (var controller in _skuCountControllers) {
+      controller.dispose();
+    }
+    
     super.dispose();
   }
 
@@ -295,14 +250,20 @@ class _SurveyReportScreenState extends State<SurveyReportScreen> {
         'type_store_id': 3,
         'date': DateFormat('yyyy-MM-dd').format(_selectedDate!),
         'store_code': _storeCodeController.text,
-        'freezer_count': int.tryParse(_freezerCountController.text) ?? 0,
+        'freezer_count': _selectedFreezerCount,
+        'sku_count': int.tryParse(_skuCountController.text) ?? 0,
         
-        // Freezer ID fields
-        'no_idn_freezer_1': _noIdnFreezer1Controller.text,
-        'photo_idn_freezer_1': _uploadedImageUrls['photo_idn_freezer_1'] ?? '',
-        'no_idn_freezer_2': _noIdnFreezer2Controller.text,
-        'photo_idn_freezer_2': _uploadedImageUrls['photo_idn_freezer_2'] ?? '',
-        
+        // Dynamic freezer ID fields based on selected count
+      };
+      
+      // Add dynamic freezer fields
+      for (int i = 0; i < _selectedFreezerCount; i++) {
+        requestBody['no_idn_freezer_${i + 1}'] = _freezerIdControllers[i].text;
+        requestBody['photo_idn_freezer_${i + 1}'] = _uploadedImageUrls['photo_idn_freezer_${i + 1}'] ?? '';
+      }
+      
+      // Add other fields
+      requestBody.addAll({
         // Freezer details
         'freezer_category_id': 5,
         'freezer_position_id': 6,
@@ -328,7 +289,6 @@ class _SurveyReportScreenState extends State<SurveyReportScreen> {
         'photo_sticker_glass_mochi': _uploadedImageUrls['photo_sticker_glass_mochi'] ?? '',
         'exist_sticker_frame_crispy_balls': _booleanFields['exist_sticker_frame_crispy_balls']!,
         'photo_sticker_frame_crispy_balls': _uploadedImageUrls['photo_sticker_frame_crispy_balls'] ?? '',
-        'sku_count': int.tryParse(_skuCountController.text) ?? 0,
         'exist_freezer_backup': _booleanFields['exist_freezer_backup']!,
         'photo_freezer_backup': _uploadedImageUrls['photo_freezer_backup'] ?? '',
         'exist_drum_freezer': _booleanFields['exist_drum_freezer']!,
@@ -347,7 +307,7 @@ class _SurveyReportScreenState extends State<SurveyReportScreen> {
         'po_total_amount': int.tryParse(_poTotalAmountController.text.replaceAll(RegExp(r'[^0-9]'), '')) ?? 0,
         'po_total_duz': int.tryParse(_poTotalDuzController.text) ?? 0,
         'constraint': _constraintController.text,
-      };
+      });
 
       print('=== SURVEY REQUEST ===');
       print('Request Body: ${jsonEncode(requestBody)}');
@@ -377,7 +337,8 @@ class _SurveyReportScreenState extends State<SurveyReportScreen> {
           reportData: {
             'typeStoreId': 3,
             'storeCode': _storeCodeController.text,
-            'freezerCount': int.tryParse(_freezerCountController.text) ?? 0,
+            'freezerCount': _selectedFreezerCount,
+            'skuCount': int.tryParse(_skuCountController.text) ?? 0,
             'constraint': _constraintController.text,
             'submittedAt': submissionTime.toIso8601String(),
           },
@@ -565,13 +526,11 @@ class _SurveyReportScreenState extends State<SurveyReportScreen> {
             const SizedBox(height: 16),
             _buildDateField(),
             const SizedBox(height: 16),
-            _buildStoreCountDropdown(),
+            _buildFreezerCountDropdown(),
             const SizedBox(height: 16),
-            _buildEnableFormButton(),
-            if (_isFormEnabled) ...[
-              const SizedBox(height: 16),
-              _buildStoreFormsSection(),
-            ],
+            _buildTextField('SKU Count', _skuCountController, 'Enter SKU count'),
+            const SizedBox(height: 16),
+            _buildFreezerFormsSection(),
           ],
         ),
       ),
@@ -600,14 +559,6 @@ class _SurveyReportScreenState extends State<SurveyReportScreen> {
                 ),
               ],
             ),
-            const SizedBox(height: 16),
-            _buildTextField('Freezer 1 ID', _noIdnFreezer1Controller, 'Enter freezer 1 ID'),
-            const SizedBox(height: 8),
-            _buildPhotoField('photo_idn_freezer_1', 'Freezer 1 Photo'),
-            const SizedBox(height: 16),
-            _buildTextField('Freezer 2 ID', _noIdnFreezer2Controller, 'Enter freezer 2 ID'),
-            const SizedBox(height: 8),
-            _buildPhotoField('photo_idn_freezer_2', 'Freezer 2 Photo'),
             const SizedBox(height: 16),
             _buildPhotoField('freezer_position_image', 'Freezer Position Image'),
             const SizedBox(height: 16),
@@ -869,7 +820,7 @@ class _SurveyReportScreenState extends State<SurveyReportScreen> {
     );
   }
 
-  Widget _buildTextField(String label, TextEditingController? controller, String hint, [int? index, String? fieldKey]) {
+  Widget _buildTextField(String label, TextEditingController? controller, String hint) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -883,7 +834,6 @@ class _SurveyReportScreenState extends State<SurveyReportScreen> {
         const SizedBox(height: 8),
         TextFormField(
           controller: controller,
-          initialValue: index != null && fieldKey != null ? _storeForms[index][fieldKey]?.toString() : null,
           decoration: InputDecoration(
             hintText: hint,
             border: OutlineInputBorder(
@@ -894,17 +844,12 @@ class _SurveyReportScreenState extends State<SurveyReportScreen> {
               vertical: 16,
             ),
           ),
-          onChanged: index != null && fieldKey != null ? (value) {
-            setState(() {
-              _storeForms[index][fieldKey] = value;
-            });
-          } : null,
         ),
       ],
     );
   }
 
-  Widget _buildNumberField(String label, TextEditingController? controller, String hint, [int? index, String? fieldKey]) {
+  Widget _buildNumberField(String label, TextEditingController? controller, String hint) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -918,7 +863,6 @@ class _SurveyReportScreenState extends State<SurveyReportScreen> {
         const SizedBox(height: 8),
         TextFormField(
           controller: controller,
-          initialValue: index != null && fieldKey != null ? _storeForms[index][fieldKey]?.toString() : null,
           keyboardType: TextInputType.number,
           inputFormatters: [FilteringTextInputFormatter.digitsOnly],
           decoration: InputDecoration(
@@ -931,17 +875,12 @@ class _SurveyReportScreenState extends State<SurveyReportScreen> {
               vertical: 16,
             ),
           ),
-          onChanged: index != null && fieldKey != null ? (value) {
-            setState(() {
-              _storeForms[index][fieldKey] = int.tryParse(value) ?? 0;
-            });
-          } : null,
         ),
       ],
     );
   }
 
-  Widget _buildCurrencyField(String label, TextEditingController? controller, String hint, [int? index, String? fieldKey]) {
+  Widget _buildCurrencyField(String label, TextEditingController? controller, String hint) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -983,12 +922,6 @@ class _SurveyReportScreenState extends State<SurveyReportScreen> {
                 );
               }
             }
-            // Update the store form data if this is a dynamic form
-            if (index != null && fieldKey != null) {
-              setState(() {
-                _storeForms[index][fieldKey] = value.replaceAll(RegExp(r'[^0-9]'), '');
-              });
-            }
           },
         ),
       ],
@@ -997,52 +930,75 @@ class _SurveyReportScreenState extends State<SurveyReportScreen> {
 
 
 
-  Widget _buildBooleanField(String fieldName, String label, [int? index]) {
-    if (index != null) {
-      // Dynamic form version
-      final fieldKey = '${fieldName}_$index';
-      return SwitchListTile(
-        title: Text(label),
-        value: _storeForms[index][fieldKey] ?? false,
-        onChanged: (value) {
-          setState(() {
-            _storeForms[index][fieldKey] = value;
-          });
-        },
-        activeThumbColor: Colors.green,
-      );
-    } else {
-      // Static form version
-      return SwitchListTile(
-        title: Text(label),
-        value: _booleanFields[fieldName]!,
-        onChanged: (value) {
-          setState(() {
-            _booleanFields[fieldName] = value;
-          });
-        },
-        activeThumbColor: Colors.green,
-      );
+  String _getPhotoFieldName(String booleanFieldName) {
+    // Map boolean field names to their corresponding photo field names
+    switch (booleanFieldName) {
+      case 'exist_freezer_backup':
+        return 'photo_freezer_backup';
+      case 'exist_drum_freezer':
+        return 'photo_drum_freezer';
+      case 'exist_sticker_crispy_ball':
+        return 'photo_sticker_crispy_ball';
+      case 'exist_sticker_mochi':
+        return 'photo_sticker_mochi';
+      case 'exist_sticker_sharing_olympic':
+        return 'photo_sticker_sharing_olympic';
+      case 'exist_price_board_olympic':
+        return 'photo_price_board_olympic';
+      case 'exist_wobler_promo':
+        return 'photo_wobler_promo';
+      case 'exist_pop_promo':
+        return 'photo_pop_promo';
+      case 'exist_price_board_led':
+        return 'photo_price_board_led';
+      case 'exist_sticker_glass_mochi':
+        return 'photo_sticker_glass_mochi';
+      case 'exist_sticker_frame_crispy_balls':
+        return 'photo_sticker_frame_crispy_balls';
+      case 'exist_crispy_balls_tier':
+        return 'photo_crispy_balls_tier';
+      default:
+        return 'photo_${booleanFieldName.replaceAll('exist_', '')}';
     }
   }
 
+  Widget _buildBooleanField(String fieldName, String label) {
+    return SwitchListTile(
+      title: Text(label),
+      value: _booleanFields[fieldName]!,
+      onChanged: (value) {
+        setState(() {
+          _booleanFields[fieldName] = value;
+          // Clear photo when boolean is disabled
+          if (!value) {
+            final photoFieldName = _getPhotoFieldName(fieldName);
+            _photoFields[photoFieldName] = null;
+            _uploadedImageUrls.remove(photoFieldName);
+          }
+        });
+      },
+      activeThumbColor: Colors.green,
+    );
+  }
 
-  Widget _buildBooleanWithPhotoField(String booleanField, String photoField, String label, [int? index]) {
+
+  Widget _buildBooleanWithPhotoField(String booleanField, String photoField, String label) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _buildBooleanField(booleanField, label, index),
-        const SizedBox(height: 8),
-        _buildPhotoField(photoField, '$label Photo', index),
+        _buildBooleanField(booleanField, label),
+        if (_booleanFields[booleanField] == true) ...[
+          const SizedBox(height: 8),
+          _buildPhotoField(photoField, '$label Photo'),
+        ],
       ],
     );
   }
 
 
-  Widget _buildPhotoField(String fieldName, String label, [int? index]) {
-    final fieldKey = index != null ? '${fieldName}_$index' : fieldName;
-    final selectedImage = _photoFields[fieldKey];
-    final isUploaded = _uploadedImageUrls[fieldKey] != null;
+  Widget _buildPhotoField(String fieldName, String label) {
+    final selectedImage = _photoFields[fieldName];
+    final isUploaded = _uploadedImageUrls[fieldName] != null;
     
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1056,7 +1012,7 @@ class _SurveyReportScreenState extends State<SurveyReportScreen> {
         ),
         const SizedBox(height: 8),
         InkWell(
-          onTap: () => _pickImage(fieldKey),
+          onTap: () => _pickImage(fieldName),
           child: Container(
             width: double.infinity,
             padding: const EdgeInsets.all(16),
@@ -1091,12 +1047,12 @@ class _SurveyReportScreenState extends State<SurveyReportScreen> {
     );
   }
 
-  Widget _buildStoreCountDropdown() {
+  Widget _buildFreezerCountDropdown() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const Text(
-          'Number of Stores *',
+          'Freezer Count *',
           style: TextStyle(
             fontWeight: FontWeight.w500,
             fontSize: 14,
@@ -1104,7 +1060,7 @@ class _SurveyReportScreenState extends State<SurveyReportScreen> {
         ),
         const SizedBox(height: 8),
         DropdownButtonFormField<int>(
-          value: _selectedStoreCount,
+          value: _selectedFreezerCount,
           decoration: InputDecoration(
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(8),
@@ -1114,21 +1070,21 @@ class _SurveyReportScreenState extends State<SurveyReportScreen> {
               vertical: 16,
             ),
           ),
-          hint: const Text('Select number of stores'),
+          hint: const Text('Select freezer count'),
           items: List.generate(5, (index) => index + 1).map((count) {
             return DropdownMenuItem<int>(
               value: count,
-              child: Text('$count Store${count > 1 ? 's' : ''}'),
+              child: Text('$count Freezer${count > 1 ? 's' : ''}'),
             );
           }).toList(),
           onChanged: (value) {
             if (value != null) {
-              _onStoreCountChanged(value);
+              _onFreezerCountChanged(value);
             }
           },
           validator: (value) {
             if (value == null) {
-              return 'Please select number of stores';
+              return 'Please select freezer count';
             }
             return null;
           },
@@ -1137,46 +1093,27 @@ class _SurveyReportScreenState extends State<SurveyReportScreen> {
     );
   }
 
-  Widget _buildEnableFormButton() {
-    return SizedBox(
-      width: double.infinity,
-      child: ElevatedButton.icon(
-        onPressed: _toggleFormEnabled,
-        icon: Icon(_isFormEnabled ? Icons.lock : Icons.lock_open),
-        label: Text(_isFormEnabled ? 'Disable Forms' : 'Enable Forms'),
-        style: ElevatedButton.styleFrom(
-          backgroundColor: _isFormEnabled ? Colors.orange : Colors.green,
-          foregroundColor: Colors.white,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(8),
-          ),
-        ),
-      ),
-    );
-  }
 
-  Widget _buildStoreFormsSection() {
+  Widget _buildFreezerFormsSection() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          'Store Forms (${_storeForms.length} stores)',
+          'Freezer Forms (${_selectedFreezerCount} freezers)',
           style: const TextStyle(
             fontWeight: FontWeight.bold,
             fontSize: 16,
           ),
         ),
         const SizedBox(height: 12),
-        ...List.generate(_storeForms.length, (index) {
-          return _buildStoreForm(index);
+        ...List.generate(_selectedFreezerCount, (index) {
+          return _buildFreezerForm(index);
         }),
       ],
     );
   }
 
-  Widget _buildStoreForm(int index) {
-    final storeForm = _storeForms[index];
-    
+  Widget _buildFreezerForm(int index) {
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
       padding: const EdgeInsets.all(16),
@@ -1191,7 +1128,7 @@ class _SurveyReportScreenState extends State<SurveyReportScreen> {
           Row(
             children: [
               Text(
-                'Store ${index + 1}',
+                'Freezer ${index + 1}',
                 style: const TextStyle(
                   fontWeight: FontWeight.bold,
                   fontSize: 16,
@@ -1201,14 +1138,14 @@ class _SurveyReportScreenState extends State<SurveyReportScreen> {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
-                  color: Colors.green[100],
+                  color: Colors.blue[100],
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Text(
-                  '${storeForm['store_name']}',
+                  'Freezer ${index + 1}',
                   style: TextStyle(
                     fontSize: 12,
-                    color: Colors.green[700],
+                    color: Colors.blue[700],
                     fontWeight: FontWeight.w500,
                   ),
                 ),
@@ -1216,63 +1153,9 @@ class _SurveyReportScreenState extends State<SurveyReportScreen> {
             ],
           ),
           const SizedBox(height: 12),
-          _buildNumberField('Freezer Count', null, 'Enter freezer count', index, 'freezer_count'),
-          const SizedBox(height: 12),
-          _buildNumberField('SKU Count', null, 'Enter SKU count', index, 'sku_count'),
-          const SizedBox(height: 12),
-          _buildTextField('Freezer 1 ID', null, 'Enter freezer 1 ID', index, 'no_idn_freezer_1'),
+          _buildTextField('Freezer ${index + 1} ID', _freezerIdControllers[index], 'Enter freezer ${index + 1} ID'),
           const SizedBox(height: 8),
-          _buildPhotoField('photo_idn_freezer_1_$index', 'Freezer 1 Photo', index),
-          const SizedBox(height: 12),
-          _buildTextField('Freezer 2 ID', null, 'Enter freezer 2 ID', index, 'no_idn_freezer_2'),
-          const SizedBox(height: 8),
-          _buildPhotoField('photo_idn_freezer_2_$index', 'Freezer 2 Photo', index),
-          const SizedBox(height: 12),
-          _buildBooleanWithPhotoField('exist_freezer_backup', 'photo_freezer_backup', 'Freezer Backup', index),
-          const SizedBox(height: 12),
-          _buildBooleanWithPhotoField('exist_drum_freezer', 'photo_drum_freezer', 'Drum Freezer', index),
-          const SizedBox(height: 12),
-          _buildBooleanWithPhotoField('exist_sticker_crispy_ball', 'photo_sticker_crispy_ball', 'Sticker Crispy Ball', index),
-          const SizedBox(height: 12),
-          _buildBooleanWithPhotoField('exist_sticker_mochi', 'photo_sticker_mochi', 'Sticker Mochi', index),
-          const SizedBox(height: 12),
-          _buildBooleanWithPhotoField('exist_sticker_sharing_olympic', 'photo_sticker_sharing_olympic', 'Sticker Sharing Olympic', index),
-          const SizedBox(height: 12),
-          _buildBooleanWithPhotoField('exist_price_board_olympic', 'photo_price_board_olympic', 'Price Board Olympic', index),
-          const SizedBox(height: 12),
-          _buildBooleanWithPhotoField('exist_wobler_promo', 'photo_wobler_promo', 'Wobler Promo', index),
-          const SizedBox(height: 12),
-          _buildBooleanWithPhotoField('exist_pop_promo', 'photo_pop_promo', 'POP Promo', index),
-          const SizedBox(height: 12),
-          _buildBooleanWithPhotoField('exist_price_board_led', 'photo_price_board_led', 'Price Board LED', index),
-          const SizedBox(height: 12),
-          _buildBooleanWithPhotoField('exist_sticker_glass_mochi', 'photo_sticker_glass_mochi', 'Sticker Glass Mochi', index),
-          const SizedBox(height: 12),
-          _buildBooleanWithPhotoField('exist_sticker_frame_crispy_balls', 'photo_sticker_frame_crispy_balls', 'Sticker Frame Crispy Balls', index),
-          const SizedBox(height: 12),
-          _buildBooleanWithPhotoField('exist_crispy_balls_tier', 'photo_crispy_balls_tier', 'Crispy Balls Tier', index),
-          const SizedBox(height: 12),
-          _buildPhotoField('photo_promo_running_$index', 'Promo Running Photo', index),
-          const SizedBox(height: 12),
-          _buildBooleanField('exist_product_focus_crispy_ball', 'Crispy Ball', index),
-          const SizedBox(height: 8),
-          _buildBooleanField('exist_product_focus_histeria_macha', 'Histeria Macha', index),
-          const SizedBox(height: 8),
-          _buildBooleanField('exist_product_focus_almond_choco', 'Almond Choco', index),
-          const SizedBox(height: 8),
-          _buildBooleanField('exist_product_focus_almond_classic', 'Almond Classic', index),
-          const SizedBox(height: 8),
-          _buildBooleanField('exist_product_focus_histeria_peach', 'Histeria Peach', index),
-          const SizedBox(height: 8),
-          _buildBooleanField('exist_product_focus_histeria_vanilla', 'Histeria Vanilla', index),
-          const SizedBox(height: 12),
-          _buildBooleanField('exist_po', 'Exist PO', index),
-          const SizedBox(height: 12),
-          _buildCurrencyField('PO Total Amount', null, 'Enter PO total amount', index, 'po_total_amount'),
-          const SizedBox(height: 12),
-          _buildNumberField('PO Total Duz', null, 'Enter PO total duz', index, 'po_total_duz'),
-          const SizedBox(height: 12),
-          _buildTextField('Constraint', null, 'Enter constraint', index, 'constraint'),
+          _buildPhotoField('photo_idn_freezer_${index + 1}', 'Freezer ${index + 1} Photo'),
         ],
       ),
     );

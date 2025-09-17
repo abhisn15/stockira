@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_translate/flutter_translate.dart';
 import 'package:stockira/screens/attendance/index.dart';
 import 'package:stockira/screens/attendance/CheckIn/maps_checkin_simple.dart';
 import 'package:stockira/screens/attendance/CheckOut/maps_checkout_screen.dart';
@@ -3706,7 +3707,7 @@ class _ActivityScreenState extends State<ActivityScreen> {
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    'Jumlah toko: ${itineraries.fold(0, (sum, itinerary) => sum + itinerary.stores.length)}',
+                    '$translate('totalStores') ${itineraries.fold(0, (sum, itinerary) => sum + itinerary.stores.length)}',
                     style: TextStyle(
                       fontSize: 14,
                       color: Colors.grey[600],
@@ -3735,7 +3736,7 @@ class _ActivityScreenState extends State<ActivityScreen> {
                         const Icon(Icons.list_alt, color: Colors.green),
                         const SizedBox(width: 8),
                         const Text(
-                          'Todo Timeline',
+                          translate('todoTimeline'),
                           style: TextStyle(
                             fontSize: 16,
                             fontWeight: FontWeight.bold,
@@ -3746,7 +3747,7 @@ class _ActivityScreenState extends State<ActivityScreen> {
                         IconButton(
                           icon: const Icon(Icons.fullscreen),
                           onPressed: _showTodoTimelineDialog,
-                          tooltip: 'View Full Timeline',
+                          tooltip: translate('viewFullTimeline'),
                         ),
                       ],
                     ),
@@ -3820,7 +3821,7 @@ class _ActivityScreenState extends State<ActivityScreen> {
           Icon(Icons.assignment_outlined, size: 100, color: Colors.grey[300]),
           const SizedBox(height: 24),
           const Text(
-            "No tasks found",
+            translate('noTasksFound'),
             style: TextStyle(
               fontSize: 20,
               fontWeight: FontWeight.bold,
@@ -3831,7 +3832,7 @@ class _ActivityScreenState extends State<ActivityScreen> {
           const Padding(
             padding: EdgeInsets.symmetric(horizontal: 24.0),
             child: Text(
-              "No tasks are scheduled for this date. Try selecting a different date or check your itinerary.",
+              translate('noTasksScheduled'),
               style: TextStyle(fontSize: 15, color: Colors.black54),
               textAlign: TextAlign.center,
             ),
@@ -3849,7 +3850,7 @@ class _ActivityScreenState extends State<ActivityScreen> {
           Icon(Icons.error_outline, size: 100, color: Colors.red[300]),
           const SizedBox(height: 24),
           const Text(
-            "Error loading data",
+            translate('errorLoadingData'),
                   style: TextStyle(
               fontSize: 20,
                     fontWeight: FontWeight.bold,
@@ -3868,7 +3869,7 @@ class _ActivityScreenState extends State<ActivityScreen> {
           const SizedBox(height: 16),
           ElevatedButton(
             onPressed: () => _loadItinerariesForDate(selectedDate),
-            child: const Text('Retry'),
+            child: Text(translate('retry')),
           ),
         ],
       ),
@@ -3968,7 +3969,7 @@ class _ActivityScreenState extends State<ActivityScreen> {
                             Text(
                               checkInTime != null 
                                   ? _calculateDuration(checkInTime, checkOutTime)
-                                  : 'Belum check-in',
+                                  : translate('notCheckedIn'),
                               style: TextStyle(
                                 fontSize: 12,
                                 color: checkInTime != null ? const Color(0xFF29BDCE) : Colors.grey[500],
@@ -3979,7 +3980,7 @@ class _ActivityScreenState extends State<ActivityScreen> {
                             Row(
                               children: [
                                 const Text(
-                                  'Progress: ',
+                                  translate('progress') + ': ',
                                   style: TextStyle(
                                     fontSize: 12,
                                     color: Colors.grey,
@@ -4031,7 +4032,7 @@ class _ActivityScreenState extends State<ActivityScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       const Text(
-                        'Task Details',
+                        translate('taskDetails'),
                         style: TextStyle(
                           fontSize: 14,
                           fontWeight: FontWeight.bold,
@@ -4148,7 +4149,7 @@ class _ActivityScreenState extends State<ActivityScreen> {
                               borderRadius: BorderRadius.circular(12),
                             ),
                             child: const Text(
-                              'DONE',
+                              translate('done'),
                               style: TextStyle(
                                 color: Colors.white,
                                 fontSize: 10,
@@ -4163,8 +4164,8 @@ class _ActivityScreenState extends State<ActivityScreen> {
                     
                     Text(
                       isCompleted 
-                          ? 'Task otomatis completed berdasarkan check-in/out' 
-                          : 'Task akan otomatis completed saat check-in/out',
+                          ? translate('taskAutoCompleted') 
+                          : translate('taskWillAutoComplete'),
                       style: TextStyle(
                         fontSize: 14,
                         color: isCompleted ? Colors.green[600] : Colors.grey[600],
@@ -4174,7 +4175,7 @@ class _ActivityScreenState extends State<ActivityScreen> {
                     if (isCompleted && todo['completedTime'] != null) ...[
                       const SizedBox(height: 4),
                       Text(
-                        'Completed at: ${_formatCompletedTime(todo['completedTime'])}',
+                        translate('completedAt') + ': ${_formatCompletedTime(todo['completedTime'])}',
                         style: TextStyle(
                           fontSize: 12,
                           color: Colors.green[600],
@@ -4202,7 +4203,7 @@ class _ActivityScreenState extends State<ActivityScreen> {
                             const SizedBox(width: 8),
                             Expanded(
                               child: Text(
-                                'Task akan otomatis completed saat check-in/out di store',
+                                translate('taskWillAutoComplete'),
                                 style: TextStyle(
                                   fontSize: 12,
                                   color: Colors.orange[600],

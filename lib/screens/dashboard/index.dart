@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:async';
+import 'package:http/http.dart' as http;
 
 import 'package:flutter/material.dart';
 import 'package:stockira/screens/attendance/index.dart';
@@ -16,6 +17,7 @@ import 'package:stockira/services/auth_service.dart';
 import 'package:stockira/services/itinerary_service.dart';
 import 'package:stockira/services/maps_service.dart';
 import 'package:stockira/services/report_completion_service.dart';
+import 'package:stockira/services/reports_api_service.dart';
 import 'package:stockira/config/maps_config.dart';
 import 'package:stockira/models/attendance_record.dart';
 import 'package:stockira/models/itinerary.dart';
@@ -721,6 +723,41 @@ class _DashboardScreenState extends State<DashboardScreen> {
     setState(() {});
   }
 
+  // Calculate active itinerary count (stores that are not yet checked out)
+  int _calculateActiveItineraryCount(List<dynamic> stores) {
+    int activeCount = 0;
+    
+    for (final store in stores) {
+      final storeId = store['id'] as int? ?? 0;
+      final attendanceStatus = _getAttendanceStatus(storeId);
+      
+      if (attendanceStatus == null) {
+        // No attendance data - store is still active
+        activeCount++;
+        print('🏪 Store $storeId: No attendance data - ACTIVE');
+      } else {
+        final checkInTime = attendanceStatus['checkInTime'] as String?;
+        final checkOutTime = attendanceStatus['checkOutTime'] as String?;
+        
+        if (checkInTime != null && checkOutTime == null) {
+          // Checked in but not checked out - still active
+          activeCount++;
+          print('🏪 Store $storeId: Checked in but not out - ACTIVE (Check-in: $checkInTime)');
+        } else if (checkInTime == null) {
+          // Not checked in - still active
+          activeCount++;
+          print('🏪 Store $storeId: Not checked in - ACTIVE');
+        } else if (checkInTime != null && checkOutTime != null) {
+          // Both checked in and out - completed
+          print('🏪 Store $storeId: Checked in and out - COMPLETED (Check-in: $checkInTime, Check-out: $checkOutTime)');
+        }
+      }
+    }
+    
+    print('📊 Total active itineraries: $activeCount out of ${stores.length}');
+    return activeCount;
+  }
+
   Future<void> _loadItineraryCount() async {
     setState(() {
       isLoadingItinerary = true;
@@ -740,13 +777,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
       setState(() {
         itineraryList = response.data;
-        itineraryCount = response.data[0].stores.length;
+        // Calculate active itinerary count (not yet checked out)
+        itineraryCount = _calculateActiveItineraryCount(response.data[0].stores);
         itineraryDate = DateTime.now();
         isLoadingItinerary = false;
       });
 
       print(
-        'Dashboard - Itinerary count loaded: ${response.data[0].stores.length}',
+        'Dashboard - Active itinerary count: $itineraryCount',
       );
       print('Dashboard - itineraryList length: ${itineraryList?.length}');
       print('Dashboard - itineraryCount: $itineraryCount');
@@ -3049,6 +3087,7 @@ class _ActivityScreenState extends State<ActivityScreen> {
         translate('priceCompetitor'),
         translate('promoTracking'),
         translate('competitorActivity'),
+        'Kegiatan Lain-lain',
         translate('attendance'),
       ];
     } else {
@@ -3064,6 +3103,7 @@ class _ActivityScreenState extends State<ActivityScreen> {
         translate('competitorActivity'),
         translate('survey'),
         translate('productBelgianBerry'),
+        'Kegiatan Lain-lain',
         translate('attendance'),
       ];
     }
@@ -3079,6 +3119,21 @@ class _ActivityScreenState extends State<ActivityScreen> {
   // Progress tracking
   int completedTasks = 0;
   bool isItineraryCompleted = false;
+  bool isLoadingReports = false;
+  
+  // Lazy loading state
+  Map<String, bool> _loadingStates = {}; // Key: "storeId_taskName", Value: loading state
+  Map<String, bool> _completionStates = {}; // Key: "storeId_taskName", Value: completion state
+  Map<String, String?> _completionTimes = {}; // Key: "storeId_taskName", Value: completion time
+  
+  // Attendance data from API
+  Map<String, Map<String, dynamic>> _attendanceData = {}; // Key: "storeId", Value: attendance details
+  bool _isLoadingAttendance = false;
+  DateTime? _lastAttendanceLoadTime;
+  
+  // Pagination state
+  int _currentPage = 1;
+  int _itemsPerPage = 5;
 
   // Expanded stores state
   Map<String, bool> _expandedStores = {};
@@ -3152,11 +3207,17 @@ class _ActivityScreenState extends State<ActivityScreen> {
           print('Loaded ${itineraries.length} itineraries');
           _checkItineraryCompletion();
           isLoading = false;
+          // Reset pagination when new data is loaded
+          _currentPage = 1;
         });
+        
+        // Load attendance data from API
+        await _loadAttendanceData();
+        
         // Generate todos after loading itineraries
         await _generateDefaultTodos();
         // Refresh todo completion status to check for completed reports
-        await _refreshTodoCompletionStatus();
+        await _refreshTodoCompletionStatusOptimized();
         } else {
         setState(() {
           errorMessage = response.message;
@@ -3223,7 +3284,7 @@ class _ActivityScreenState extends State<ActivityScreen> {
         todoItems[i]['completed'] = shouldBeCompleted;
         todoItems[i]['autoCompleted'] = shouldBeCompleted;
         if (shouldBeCompleted) {
-          todoItems[i]['completedTime'] = DateTime.now().toIso8601String();
+          todoItems[i]['completedTime'] = await _getActualCompletionTime(storeId, taskName, dateStr);
           // Log additional activity when task is completed
           await _saveAdditionalActivityLog(
             taskName,
@@ -3240,6 +3301,22 @@ class _ActivityScreenState extends State<ActivityScreen> {
       _saveTodoItems();
       _updateProgress();
     }
+  }
+
+  Future<void> _refreshTodoCompletionStatusOptimized() async {
+    final dateStr =
+        '${selectedDate.year.toString().padLeft(4, '0')}-${selectedDate.month.toString().padLeft(2, '0')}-${selectedDate.day.toString().padLeft(2, '0')}';
+
+    print('🔄 [Lazy Loading] Initializing todo completion status for date: $dateStr');
+    
+    // Clear previous states
+    setState(() {
+      _loadingStates.clear();
+      _completionStates.clear();
+      _completionTimes.clear();
+    });
+    
+    print('ℹ️ [Lazy Loading] Todo items ready for lazy loading. Tap any item to check completion status.');
   }
 
   void _checkItineraryCompletion() {
@@ -3345,7 +3422,7 @@ class _ActivityScreenState extends State<ActivityScreen> {
             'date': dateStr,
             'autoCompleted': isAutoCompleted,
             'completedTime': isAutoCompleted
-                ? DateTime.now().toIso8601String()
+                ? await _getActualCompletionTime(store.id, task, dateStr)
                 : null,
           });
         }
@@ -3361,7 +3438,7 @@ class _ActivityScreenState extends State<ActivityScreen> {
   }
 
   Future<bool> _checkAutoCompletion(
-    int storeId,
+int storeId,
     String taskName,
     String dateStr,
   ) async {
@@ -3370,20 +3447,44 @@ class _ActivityScreenState extends State<ActivityScreen> {
       return await _checkAttendanceCompletion(storeId, dateStr);
     }
 
-    // Check if specific report has been completed
+    // Check if specific report has been completed using API
     String reportType = _getReportTypeFromTask(taskName);
     if (reportType.isNotEmpty) {
-      final isReportCompleted = await ReportCompletionService.isReportCompleted(
-        storeId: storeId,
-        reportType: reportType,
-        date: dateStr,
-      );
-
-      if (isReportCompleted) {
-        print(
-          '✅ Auto-completion: $taskName completed for store $storeId on $dateStr',
+      try {
+        final isReportCompleted = await ReportsApiService.isReportCompleted(
+          reportType: reportType,
+          date: dateStr,
+          storeId: storeId,
         );
-        return true;
+
+        if (isReportCompleted) {
+          // Get completion time from API
+          final completionTime = await ReportsApiService.getReportCompletionTime(
+            reportType: reportType,
+            date: dateStr,
+            storeId: storeId,
+          );
+
+          print(
+            '✅ Auto-completion: $taskName completed for store $storeId on $dateStr',
+          );
+          if (completionTime != null) {
+            print('✅ Completion time: $completionTime');
+          }
+          return true;
+        }
+      } catch (e) {
+        print('❌ Error checking API completion for $taskName: $e');
+        // Fallback to local storage check
+        final isLocalCompleted = await ReportCompletionService.isReportCompleted(
+          storeId: storeId,
+          reportType: reportType,
+          date: dateStr,
+        );
+        if (isLocalCompleted) {
+          print('✅ Fallback to local completion: $taskName completed for store $storeId on $dateStr');
+          return true;
+        }
       }
     }
 
@@ -3400,72 +3501,81 @@ class _ActivityScreenState extends State<ActivityScreen> {
   }
 
   Future<bool> _checkAttendanceCompletion(int storeId, String dateStr) async {
-    // Use todayRecord from dashboard to check attendance status
-    try {
-      // Get today's date string
-      final today = DateTime.now();
-      final todayStr =
-          '${today.year.toString().padLeft(4, '0')}-${today.month.toString().padLeft(2, '0')}-${today.day.toString().padLeft(2, '0')}';
-
-      // Only check for today's attendance
-      if (dateStr != todayStr) {
-        print('📋 Not checking attendance for non-today date: $dateStr');
+    // Check attendance status from API data
+    final attendanceStatus = _getAttendanceStatus(storeId);
+    if (attendanceStatus != null) {
+      final isCheckedIn = attendanceStatus['isCheckedIn'] == true;
+      final isCheckedOut = attendanceStatus['isCheckedOut'] == true;
+      
+      // Consider attendance completed if both check-in and check-out are done
+      if (isCheckedIn && isCheckedOut) {
+        print('✅ [Attendance API] Store $storeId: Check-in: ${attendanceStatus['checkInTime']}, Check-out: ${attendanceStatus['checkOutTime']} - COMPLETED');
+        return true;
+      } else if (isCheckedIn && !isCheckedOut) {
+        print('🔄 [Attendance API] Store $storeId: Check-in: ${attendanceStatus['checkInTime']}, Check-out: null - IN PROGRESS');
+        return false;
+      } else {
+        print('❌ [Attendance API] Store $storeId: No check-in data - NOT STARTED');
         return false;
       }
-
-      // Check if we have today's record from dashboard
-      // This is a simple approach - we'll check if user is currently checked in
-      // and if the store ID matches
-      final prefs = await SharedPreferences.getInstance();
-      final todayRecordData = prefs.getString('today_attendance_record');
-
-      if (todayRecordData != null) {
-        final data = jsonDecode(todayRecordData);
-        final recordStoreId = data['storeId'] as int? ?? 0;
-        final hasCheckIn = data['checkInTime'] != null;
-        final hasCheckOut = data['checkOutTime'] != null;
-
-        if (recordStoreId == storeId) {
-          print(
-            '📋 Dashboard attendance check for store $storeId: checkIn=$hasCheckIn, checkOut=$hasCheckOut',
-          );
-          return hasCheckIn && hasCheckOut;
-        }
-      }
-
-      print(
-        '📋 No dashboard attendance record found for store $storeId on $dateStr',
-      );
-      return false;
-    } catch (e) {
-      print('📋 Error checking dashboard attendance: $e');
-      return false;
     }
+    
+    // Fallback to local storage if API data not available
+    print('⚠️ [Attendance API] No API data for store $storeId, checking local storage...');
+    final hasCheckIn = attendanceRecords.any((record) {
+      final recordDate =
+          '${record.date.year.toString().padLeft(4, '0')}-${record.date.month.toString().padLeft(2, '0')}-${record.date.day.toString().padLeft(2, '0')}';
+      return recordDate == dateStr &&
+          record.details.any((detail) => detail.storeId == storeId);
+    });
+
+    print('📋 [Local Storage] Store $storeId attendance: ${hasCheckIn ? "FOUND" : "NOT FOUND"}');
+    return hasCheckIn;
   }
 
   String _getReportTypeFromTask(String taskName) {
-    // Map task names to report types
+    // Map task names to report types (matching API report types)
     final taskToReportMap = {
       'OOS': 'out_of_stock',
       'OOS (Out of Stock)': 'out_of_stock',
       'Out of Stock': 'out_of_stock',
-      'Price Principal': 'price_principal',
+      'Price Principal': 'price',
       'Price Competitor': 'price_competitor',
       'Promo Tracking': 'promo_tracking',
       'Competitor Activity': 'competitor_activity',
+      'Activity Other': 'activity_other',
+      'Kegiatan Lain-lain': 'activity_other',
       translate('survey'): 'survey',
       'Product Focus': 'product_focus',
-      'Regular Display': 'display_report',
-      'Reguler Display': 'display_report',
-      translate('display'): 'display_report',
+      'Regular Display': 'reguler_display',
+      'Reguler Display': 'reguler_display',
+      translate('display'): 'display',
       'Product Belgian Berry': 'product_belgian_berry',
       'Expired Date': 'expired_date',
-      'Display Check': 'display_report',
+      'Display Check': 'display',
       translate('sales'): 'sales',
       'Customer Feedback': 'customer_feedback',
     };
 
     return taskToReportMap[taskName] ?? '';
+  }
+
+  Future<String?> _getActualCompletionTime(int storeId, String taskName, String dateStr) async {
+    try {
+      String reportType = _getReportTypeFromTask(taskName);
+      if (reportType.isNotEmpty) {
+        final completionTime = await ReportsApiService.getReportCompletionTime(
+          reportType: reportType,
+          date: dateStr,
+          storeId: storeId,
+        );
+        return completionTime;
+      }
+      return DateTime.now().toIso8601String();
+    } catch (e) {
+      print('❌ Error getting actual completion time: $e');
+      return DateTime.now().toIso8601String();
+    }
   }
 
   Future<void> _saveTodoItems() async {
@@ -3789,7 +3899,7 @@ class _ActivityScreenState extends State<ActivityScreen> {
                 await _loadItinerariesForDate(selectedDate);
                 _loadAttendanceRecords();
                 _loadTodoItems();
-                await _refreshTodoCompletionStatus();
+                await _refreshTodoCompletionStatusOptimized();
                 Navigator.pop(context);
               },
               child: Text(translate('apply')),
@@ -3815,24 +3925,67 @@ class _ActivityScreenState extends State<ActivityScreen> {
               final item = todoItems[index];
               final time = DateTime.parse(item['time']);
               final createdAt = DateTime.parse(item['createdAt']);
+              final storeId = item['storeId'] as int? ?? 0;
+              final taskName = item['task'] as String? ?? '';
+              
+              // Check lazy loading states
+              final needsLoading = !_completionStates.containsKey('${storeId}_$taskName');
+              final isLoading = _isTodoLoading(storeId, taskName);
+              final isApiCompleted = _isTodoCompleted(storeId, taskName);
+              final completionTime = _getTodoCompletionTime(storeId, taskName);
+              final finalCompleted = item['completed'] == true || isApiCompleted;
 
               return ListTile(
                 leading: Checkbox(
-                  value: item['completed'],
+                  value: finalCompleted,
                   onChanged: (value) => _toggleTodoItem(item['id']),
                 ),
-                title: Text(
+                title: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
                   '${item['task']} - ${item['storeName']}',
                   style: TextStyle(
-                    decoration: item['completed']
+                          decoration: finalCompleted
                         ? TextDecoration.lineThrough
                         : null,
-                    color: item['completed'] ? Colors.grey : null,
-                  ),
+                          color: finalCompleted ? Colors.grey : null,
+                        ),
+                      ),
+                    ),
+                    if (isLoading)
+                      const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.blue,
+                        ),
+                      )
+                    else if (needsLoading)
+                      IconButton(
+                        icon: Icon(Icons.refresh, size: 16, color: Colors.grey[400]),
+                        onPressed: () => _loadTodoCompletionStatus(storeId, taskName),
+                      ),
+                  ],
                 ),
-                subtitle: Text(
+                subtitle: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
                   'Created: ${_formatTime(createdAt)} | Due: ${_formatTime(time)}',
                   style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                    ),
+                    if (finalCompleted && completionTime != null)
+                      Text(
+                        'Selesai pada: ${_formatCompletionTime(completionTime)}',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: Colors.green[600],
+                          fontStyle: FontStyle.italic,
+                        ),
+                      ),
+                  ],
                 ),
                 trailing: IconButton(
                   icon: const Icon(Icons.delete, color: Colors.red),
@@ -3897,12 +4050,22 @@ class _ActivityScreenState extends State<ActivityScreen> {
             tooltip: 'Clear All',
           ),
           IconButton(
-            icon: const Icon(Icons.refresh, color: Colors.cyan),
-            onPressed: () async {
+            icon: _isLoadingAttendance 
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      valueColor: AlwaysStoppedAnimation<Color>(Colors.cyan),
+                    ),
+                  )
+                : const Icon(Icons.refresh, color: Colors.cyan),
+            onPressed: _isLoadingAttendance ? null : () async {
               await _loadItinerariesForDate(selectedDate);
+              await _refreshAttendanceData();
               await _refreshTodoCompletionStatus();
             },
-            tooltip: 'Reload',
+            tooltip: _isLoadingAttendance ? 'Refreshing...' : 'Reload',
           ),
         ],
         backgroundColor: Colors.white,
@@ -3996,35 +4159,7 @@ class _ActivityScreenState extends State<ActivityScreen> {
                     ...todoItems
                         .take(3)
                         .map(
-                          (item) => Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 4),
-                            child: Row(
-                              children: [
-                                Checkbox(
-                                  value: item['completed'],
-                                  onChanged: (value) =>
-                                      _toggleTodoItem(item['id']),
-                                  materialTapTargetSize:
-                                      MaterialTapTargetSize.shrinkWrap,
-                                ),
-                                const SizedBox(width: 8),
-                                Expanded(
-                                  child: Text(
-                                    '${item['task']} - ${item['storeName']}',
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      decoration: item['completed']
-                                          ? TextDecoration.lineThrough
-                                          : null,
-                                      color: item['completed']
-                                          ? Colors.grey
-                                          : null,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
+                          (item) => _buildLazyTodoItem(item),
                         ),
                   ],
                 ),
@@ -4032,21 +4167,15 @@ class _ActivityScreenState extends State<ActivityScreen> {
               const SizedBox(height: 16),
             ],
 
-            // Store visits list
+            // Store visits list with pagination
             Expanded(
-              child: isLoading
-                  ? const Center(child: CircularProgressIndicator())
+              child: isLoading || _isLoadingAttendance
+                  ? _buildSkeletonLoading()
                   : errorMessage != null
                   ? _buildErrorState(errorMessage!)
                   : getStoreVisits().isEmpty
                   ? _buildEmptyState()
-                  : ListView.builder(
-                      itemCount: getStoreVisits().length,
-                      itemBuilder: (context, i) {
-                        final storeVisit = getStoreVisits()[i];
-                        return _buildStoreVisitItem(context, storeVisit, i);
-                      },
-                    ),
+                  : _buildPaginatedStoreList(),
             ),
           ],
         ),
@@ -4081,6 +4210,88 @@ class _ActivityScreenState extends State<ActivityScreen> {
         ],
       ),
     );
+  }
+
+  Widget _buildPaginatedStoreList() {
+    final allStores = getStoreVisits();
+    final startIndex = (_currentPage - 1) * _itemsPerPage;
+    final endIndex = (startIndex + _itemsPerPage).clamp(0, allStores.length);
+    final currentPageStores = allStores.sublist(startIndex, endIndex);
+    
+    return Column(
+      children: [
+        // Store list
+        Expanded(
+          child: ListView.builder(
+            itemCount: currentPageStores.length,
+            itemBuilder: (context, i) {
+              final storeVisit = currentPageStores[i];
+              return _buildStoreVisitItem(context, storeVisit, startIndex + i);
+            },
+          ),
+        ),
+        
+        // Pagination controls
+        if (allStores.length > _itemsPerPage)
+          Container(
+            padding: const EdgeInsets.all(16),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                // Previous button
+                ElevatedButton.icon(
+                  onPressed: _currentPage > 1 ? _previousPage : null,
+                  icon: const Icon(Icons.chevron_left, size: 18),
+                  label: const Text('Previous'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: _currentPage > 1 ? const Color(0xFF29BDCE) : Colors.grey[300],
+                    foregroundColor: _currentPage > 1 ? Colors.white : Colors.grey[600],
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  ),
+                ),
+                
+                // Page info
+                Text(
+                  'Page $_currentPage of ${(allStores.length / _itemsPerPage).ceil()}',
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                
+                // Next button
+                ElevatedButton.icon(
+                  onPressed: _currentPage < (allStores.length / _itemsPerPage).ceil() ? _nextPage : null,
+                  icon: const Icon(Icons.chevron_right, size: 18),
+                  label: const Text('Next'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: _currentPage < (allStores.length / _itemsPerPage).ceil() ? const Color(0xFF29BDCE) : Colors.grey[300],
+                    foregroundColor: _currentPage < (allStores.length / _itemsPerPage).ceil() ? Colors.white : Colors.grey[600],
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  ),
+                ),
+              ],
+            ),
+          ),
+      ],
+    );
+  }
+
+  void _previousPage() {
+    if (_currentPage > 1) {
+      setState(() {
+        _currentPage--;
+      });
+    }
+  }
+
+  void _nextPage() {
+    final totalPages = (getStoreVisits().length / _itemsPerPage).ceil();
+    if (_currentPage < totalPages) {
+      setState(() {
+        _currentPage++;
+      });
+    }
   }
 
   Widget _buildErrorState(String error) {
@@ -4126,11 +4337,14 @@ class _ActivityScreenState extends State<ActivityScreen> {
     int index,
   ) {
     final storeName = storeVisit['storeName'] as String? ?? 'Unknown Store';
+    final storeId = storeVisit['storeId'] as int? ?? 0;
     final completedTasks = storeVisit['completedTasks'] as int? ?? 0;
     final totalTasks = storeVisit['totalTasks'] as int? ?? 0;
-    final checkInTime = storeVisit['checkInTime'] as TimeOfDay?;
-    final checkOutTime = storeVisit['checkOutTime'] as TimeOfDay?;
     final todos = storeVisit['todos'] as List<Map<String, dynamic>>? ?? [];
+    
+    // Get attendance data from API
+    final attendanceStatus = _getAttendanceStatus(storeId);
+    final attendanceStatusText = _getAttendanceStatusText(storeId);
 
     return StatefulBuilder(
       builder: (context, setState) {
@@ -4169,19 +4383,17 @@ class _ActivityScreenState extends State<ActivityScreen> {
           children: [
                       // Time
                 Container(
-                        width: 60,
-                        child: Text(
-                          checkInTime != null
-                              ? '${checkInTime.hour.toString().padLeft(2, '0')}:${checkInTime.minute.toString().padLeft(2, '0')}'
-                              : '--:--',
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.bold,
-                            color: checkInTime != null
-                                ? const Color(0xFF29BDCE)
-                                : Colors.grey[400],
+                          width: 60,
+                          child: Text(
+                            attendanceStatus?['checkInTime'] ?? '--:--',
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.bold,
+                              color: attendanceStatus?['isCheckedIn'] == true
+                                  ? const Color(0xFF29BDCE)
+                                  : Colors.grey[400],
+                            ),
                           ),
-                        ),
                       ),
 
                       const SizedBox(width: 12),
@@ -4217,15 +4429,10 @@ class _ActivityScreenState extends State<ActivityScreen> {
                       ),
                       const SizedBox(height: 4),
                       Text(
-                              checkInTime != null
-                                  ? _calculateDuration(
-                                      checkInTime,
-                                      checkOutTime,
-                                    )
-                                  : '0',
+                              attendanceStatusText,
                               style: TextStyle(
                                 fontSize: 12,
-                                color: checkInTime != null
+                                color: attendanceStatus?['isCheckedIn'] == true
                                     ? const Color(0xFF29BDCE)
                                     : Colors.grey[500],
                                 fontWeight: FontWeight.w500,
@@ -4273,8 +4480,8 @@ class _ActivityScreenState extends State<ActivityScreen> {
                         isExpanded
                             ? Icons.keyboard_arrow_up
                             : Icons.keyboard_arrow_down,
-                        color: Colors.grey[600],
-                      ),
+                            color: Colors.grey[600],
+                          ),
                     ],
                   ),
                 ),
@@ -4305,9 +4512,9 @@ class _ActivityScreenState extends State<ActivityScreen> {
                     ],
                   ),
                 ),
-              ],
-            ],
-          ),
+                      ],
+                    ],
+                  ),
         );
       },
     );
@@ -4389,9 +4596,9 @@ class _ActivityScreenState extends State<ActivityScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Row(
-                      children: [
-                        Expanded(
+            Row(
+              children: [
+                Expanded(
                           child: Text(
                             taskName,
                             style: TextStyle(
@@ -4410,9 +4617,9 @@ class _ActivityScreenState extends State<ActivityScreen> {
                           Container(
                     padding: const EdgeInsets.symmetric(
                               horizontal: 8,
-                              vertical: 4,
-                            ),
-                            decoration: BoxDecoration(
+                      vertical: 4,
+                    ),
+                    decoration: BoxDecoration(
                               color: Colors.green,
                               borderRadius: BorderRadius.circular(12),
                             ),
@@ -4462,9 +4669,9 @@ class _ActivityScreenState extends State<ActivityScreen> {
                     if (!isCompleted) ...[
                       const SizedBox(height: 8),
                       Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 8,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 8,
                         ),
                   decoration: BoxDecoration(
                     color: Colors.orange.withOpacity(0.1),
@@ -4488,11 +4695,11 @@ class _ActivityScreenState extends State<ActivityScreen> {
                             fontSize: 12,
                                   color: Colors.orange[600],
                             fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                      ),
-                          ],
-                        ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
                       ),
                     ],
                   ],
@@ -4523,123 +4730,107 @@ class _ActivityScreenState extends State<ActivityScreen> {
       '🔍 _buildAttendanceStatus: storeId=$storeId, dateStr=$dateStr, isCompleted=$isCompleted',
     );
 
-    // Use local storage to get attendance status
-    return FutureBuilder<Map<String, dynamic>?>(
-      future: _getLocalAttendanceData(storeId, dateStr),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return Text(
-            'Loading...',
-            style: TextStyle(fontSize: 14, color: Colors.grey[600]),
-          );
-        }
-
-        final attendanceData = snapshot.data;
-        if (attendanceData == null) {
-          return Text(
-            '0',
-            style: TextStyle(
-              fontSize: 14,
-              color: Colors.grey[500],
-              fontWeight: FontWeight.w500,
-            ),
-          );
-        }
-
-        final hasCheckIn = attendanceData['checkInTime'] != null;
-        final hasCheckOut = attendanceData['checkOutTime'] != null;
-
-        print(
-          '🔍 Local attendance status: hasCheckIn=$hasCheckIn, hasCheckOut=$hasCheckOut',
-        );
-
-        if (hasCheckIn && hasCheckOut) {
-          // Both check-in and check-out exist - show duration
-          final duration = _calculateDurationFromStrings(
-            attendanceData['checkInTime'],
-            attendanceData['checkOutTime'],
-          );
-
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-                      Text(
-                duration,
-                style: TextStyle(
-                  fontSize: 14,
-                  color: Colors.green[600],
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-              const SizedBox(height: 4),
-              Row(
-                children: [
-                  Icon(Icons.login, size: 16, color: Colors.green[600]),
-                  const SizedBox(width: 4),
-                  Text(
-                    'Check-in: ${_formatTimeFromString(attendanceData['checkInTime'])}',
-                    style: TextStyle(fontSize: 12, color: Colors.green[600]),
-                      ),
-                    ],
-                  ),
-              const SizedBox(height: 2),
-              Row(
-                children: [
-                  Icon(Icons.logout, size: 16, color: Colors.green[600]),
-                  const SizedBox(width: 4),
-                  Text(
-                    'Check-out: ${_formatTimeFromString(attendanceData['checkOutTime'])}',
-                    style: TextStyle(fontSize: 12, color: Colors.green[600]),
-                  ),
-                ],
-              ),
-            ],
-          );
-        } else if (hasCheckIn && !hasCheckOut) {
-          // Only check-in exists - show real-time duration from check-in to now
-          final checkInTime = attendanceData['checkInTime'];
-          final duration = _calculateDurationFromStrings(
-            checkInTime,
-            null,
-          ); // null = use current time
-
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                duration,
-                style: TextStyle(
-                  fontSize: 14,
-                  color: Colors.orange[600],
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-              const SizedBox(height: 4),
-              Row(
-                children: [
-                  Icon(Icons.login, size: 16, color: Colors.orange[600]),
-                  const SizedBox(width: 4),
-                  Text(
-                    'Check-in: ${_formatTimeFromString(attendanceData['checkInTime'])}',
-                    style: TextStyle(fontSize: 12, color: Colors.orange[600]),
-            ),
-          ],
+    // Use API data for attendance status
+    final attendanceStatus = _getAttendanceStatus(storeId);
+    
+    if (attendanceStatus == null) {
+      return Text(
+        'Belum check-in',
+        style: TextStyle(
+          fontSize: 14,
+          color: Colors.grey[500],
+          fontWeight: FontWeight.w500,
         ),
-            ],
-          );
-        } else {
-          // No check-in
-          return Text(
-            '0',
+      );
+    }
+
+    final checkInTime = attendanceStatus['checkInTime'] as String?;
+    final checkOutTime = attendanceStatus['checkOutTime'] as String?;
+    final isCheckedIn = checkInTime != null;
+    final isCheckedOut = checkOutTime != null;
+
+    print(
+      '🔍 API attendance status: hasCheckIn=$isCheckedIn ($checkInTime), hasCheckOut=$isCheckedOut ($checkOutTime)',
+    );
+
+    if (isCheckedIn && isCheckedOut) {
+      // Both check-in and check-out exist - show duration
+      final duration = _calculateDurationFromAPI(checkInTime, checkOutTime);
+
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            duration,
             style: TextStyle(
               fontSize: 14,
-              color: Colors.grey[500],
+              color: Colors.green[600],
               fontWeight: FontWeight.w500,
             ),
-          );
-        }
-      },
-    );
+          ),
+          const SizedBox(height: 4),
+          Row(
+            children: [
+              Icon(Icons.login, size: 16, color: Colors.green[600]),
+              const SizedBox(width: 4),
+              Text(
+                'Check-in: ${_formatTimeFromString(checkInTime!)}',
+                style: TextStyle(fontSize: 12, color: Colors.green[600]),
+              ),
+            ],
+          ),
+          const SizedBox(height: 2),
+          Row(
+            children: [
+              Icon(Icons.logout, size: 16, color: Colors.green[600]),
+              const SizedBox(width: 4),
+              Text(
+                'Check-out: ${_formatTimeFromString(checkOutTime!)}',
+                style: TextStyle(fontSize: 12, color: Colors.green[600]),
+              ),
+            ],
+          ),
+        ],
+      );
+    } else if (isCheckedIn && !isCheckedOut) {
+      // Only check-in exists - show real-time duration from check-in to now
+      final duration = _calculateDurationFromAPI(checkInTime, null); // null = use current time
+
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            duration,
+            style: TextStyle(
+              fontSize: 14,
+              color: Colors.orange[600],
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Row(
+            children: [
+              Icon(Icons.login, size: 16, color: Colors.orange[600]),
+              const SizedBox(width: 4),
+              Text(
+                'Check-in: ${_formatTimeFromString(checkInTime!)}',
+                style: TextStyle(fontSize: 12, color: Colors.orange[600]),
+              ),
+            ],
+          ),
+        ],
+      );
+    } else {
+      // No check-in
+      return Text(
+        'Belum check-in',
+        style: TextStyle(
+          fontSize: 14,
+          color: Colors.grey[500],
+          fontWeight: FontWeight.w500,
+        ),
+      );
+    }
   }
 
   Future<Map<String, dynamic>?> _getLocalAttendanceData(
@@ -4708,4 +4899,526 @@ class _ActivityScreenState extends State<ActivityScreen> {
         )
         .toList();
   }
+
+  String _formatCompletionTime(String? completionTime) {
+    if (completionTime == null) return '';
+    
+    try {
+      // Handle different time formats from API
+      DateTime dateTime;
+      if (completionTime.contains('T')) {
+        // ISO format: 2025-09-17T11:30:18.000000Z
+        dateTime = DateTime.parse(completionTime);
+      } else if (completionTime.contains(' ')) {
+        // Format: 2025-09-17 11:30:18
+        dateTime = DateTime.parse(completionTime);
+      } else {
+        // Fallback
+        return completionTime;
+      }
+      
+      // Format as "HH:mm" (24-hour format)
+      return '${dateTime.hour.toString().padLeft(2, '0')}:${dateTime.minute.toString().padLeft(2, '0')}';
+    } catch (e) {
+      print('Error formatting completion time: $e');
+      return completionTime;
+    }
+  }
+
+  // Lazy loading method for individual todo items
+  Future<void> _loadTodoCompletionStatus(int storeId, String taskName) async {
+    final dateStr = '${selectedDate.year.toString().padLeft(4, '0')}-${selectedDate.month.toString().padLeft(2, '0')}-${selectedDate.day.toString().padLeft(2, '0')}';
+    final key = '${storeId}_$taskName';
+    
+    // Skip if already loading or already checked
+    if (_loadingStates[key] == true || _completionStates.containsKey(key)) {
+      return;
+    }
+    
+    // Set loading state
+    setState(() {
+      _loadingStates[key] = true;
+    });
+    
+    try {
+      print('🔄 [Lazy Loading] Checking completion for: $taskName at store $storeId');
+      
+      String reportType = _getReportTypeFromTask(taskName);
+      bool isCompleted = false;
+      String? completionTime;
+      
+      if (reportType.isNotEmpty) {
+        // Check if report is completed
+        isCompleted = await ReportsApiService.isReportCompleted(
+          reportType: reportType,
+          date: dateStr,
+          storeId: storeId,
+        );
+        
+        if (isCompleted) {
+          // Get completion time
+          completionTime = await ReportsApiService.getReportCompletionTime(
+            reportType: reportType,
+            date: dateStr,
+            storeId: storeId,
+          );
+        }
+      }
+      
+      // Update states
+      setState(() {
+        _loadingStates[key] = false;
+        _completionStates[key] = isCompleted;
+        _completionTimes[key] = completionTime;
+      });
+      
+      print('✅ [Lazy Loading] $taskName at store $storeId: ${isCompleted ? "COMPLETED" : "NOT COMPLETED"}');
+      if (isCompleted && completionTime != null) {
+        print('✅ [Lazy Loading] Completion time: $completionTime');
+      }
+      
+    } catch (e) {
+      print('❌ [Lazy Loading] Error checking $taskName: $e');
+      setState(() {
+        _loadingStates[key] = false;
+        _completionStates[key] = false;
+        _completionTimes[key] = null;
+      });
+    }
+  }
+  
+  // Check if todo item is loading
+  bool _isTodoLoading(int storeId, String taskName) {
+    final key = '${storeId}_$taskName';
+    return _loadingStates[key] == true;
+  }
+  
+  // Check if todo item is completed
+  bool _isTodoCompleted(int storeId, String taskName) {
+    final key = '${storeId}_$taskName';
+    return _completionStates[key] == true;
+  }
+  
+  // Get completion time for todo item
+  String? _getTodoCompletionTime(int storeId, String taskName) {
+    final key = '${storeId}_$taskName';
+    return _completionTimes[key];
+  }
+
+  // Load attendance data from API
+  Future<void> _loadAttendanceData() async {
+    if (_isLoadingAttendance) {
+      print('⚠️ [Attendance API] Already loading, skipping...');
+      return;
+    }
+    
+    // Debouncing: prevent multiple calls within 2 seconds
+    final now = DateTime.now();
+    if (_lastAttendanceLoadTime != null && 
+        now.difference(_lastAttendanceLoadTime!).inSeconds < 2) {
+      print('⚠️ [Attendance API] Debouncing: Too soon since last load, skipping...');
+      return;
+    }
+    
+    print('🔄 [Attendance API] Starting to load attendance data...');
+    _lastAttendanceLoadTime = now;
+    setState(() {
+      _isLoadingAttendance = true;
+    });
+    
+    try {
+      final token = await AuthService.getToken();
+      if (token == null || token.isEmpty) {
+        print('❌ No token found for attendance API');
+        return;
+      }
+
+      final response = await http.get(
+        Uri.parse('${Env.apiBaseUrl}/attendances/store/check-in'),
+        headers: {
+          'Accept': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      );
+
+      print('=== ATTENDANCE API RESPONSE ===');
+      print('Status Code: ${response.statusCode}');
+      print('Response Body: ${response.body}');
+      print('URL: ${Env.apiBaseUrl}/attendances/store/check-in');
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body) as Map<String, dynamic>;
+        if (data['success'] == true && data['data'] != null) {
+          final attendanceList = data['data'] as List<dynamic>;
+          
+          // Clear previous data
+          _attendanceData.clear();
+          
+          // Process each attendance record
+          for (final attendanceRecord in attendanceList) {
+            final details = attendanceRecord['details'] as List<dynamic>? ?? [];
+            
+            // Process each store detail in the attendance record
+            for (final detail in details) {
+              final storeId = detail['store_id'] as int? ?? 0;
+              final storeName = detail['store_name'] as String? ?? '';
+              final checkInTime = detail['check_in_time'] as String?;
+              final checkOutTime = detail['check_out_time'] as String?;
+              final isApproved = detail['is_approved'] as int? ?? 0;
+              
+              _attendanceData[storeId.toString()] = {
+                'storeId': storeId,
+                'storeName': storeName,
+                'checkInTime': checkInTime,
+                'checkOutTime': checkOutTime,
+                'isApproved': isApproved,
+                'isCheckedIn': checkInTime != null,
+                'isCheckedOut': checkOutTime != null,
+              };
+              
+              print('📊 Store $storeId ($storeName): Check-in: $checkInTime, Check-out: $checkOutTime');
+            }
+          }
+          
+          setState(() {});
+          print('✅ [Attendance API] Attendance data loaded successfully');
+          
+          // Update itinerary count based on attendance data
+          if (itineraryList != null && itineraryList!.isNotEmpty) {
+            final newItineraryCount = _calculateActiveItineraryCount(itineraryList![0].stores);
+            if (newItineraryCount != itineraryCount) {
+              setState(() {
+                itineraryCount = newItineraryCount;
+              });
+              print('🔄 [Itinerary Count] Updated to $itineraryCount active itineraries');
+            }
+          }
+        } else {
+          print('⚠️ [Attendance API] No attendance data found in response');
+        }
+      } else {
+        print('❌ [Attendance API] Failed to load attendance data: ${response.statusCode}');
+      }
+    } catch (e) {
+      print('❌ [Attendance API] Error loading attendance data: $e');
+    } finally {
+      print('🏁 [Attendance API] Loading completed, resetting loading state');
+      setState(() {
+        _isLoadingAttendance = false;
+      });
+    }
+  }
+
+  // Get attendance status for a store
+  Map<String, dynamic>? _getAttendanceStatus(int storeId) {
+    return _attendanceData[storeId.toString()];
+  }
+
+  // Refresh attendance data manually
+  Future<void> _refreshAttendanceData() async {
+    print('🔄 [Manual Refresh] Refreshing attendance data...');
+    // Reset debouncing for manual refresh
+    _lastAttendanceLoadTime = null;
+    await _loadAttendanceData();
+  }
+
+  // Calculate duration between check-in and check-out
+  String _calculateDurationFromAPI(String? checkInTime, String? checkOutTime) {
+    if (checkInTime == null) return 'Belum check-in';
+    
+    try {
+      // Parse check-in time (format: "09:30:36")
+      final checkIn = TimeOfDay(
+        hour: int.parse(checkInTime.split(':')[0]),
+        minute: int.parse(checkInTime.split(':')[1]),
+      );
+      
+      final checkInMinutes = checkIn.hour * 60 + checkIn.minute;
+      
+      if (checkOutTime == null) {
+        // Calculate real-time duration from check-in to now
+        final now = DateTime.now();
+        final currentMinutes = now.hour * 60 + now.minute;
+        final durationMinutes = currentMinutes - checkInMinutes;
+        
+        if (durationMinutes < 0) {
+          return 'Masih di toko';
+        }
+        
+        // Format real-time duration
+        if (durationMinutes < 60) {
+          return '${durationMinutes}m (live)';
+        } else {
+          final hours = durationMinutes ~/ 60;
+          final minutes = durationMinutes % 60;
+          if (minutes == 0) {
+            return '${hours}h (live)';
+          } else {
+            return '${hours}h ${minutes}m (live)';
+          }
+        }
+      } else {
+        // Calculate duration between check-in and check-out
+        final checkOut = TimeOfDay(
+          hour: int.parse(checkOutTime.split(':')[0]),
+          minute: int.parse(checkOutTime.split(':')[1]),
+        );
+        
+        final checkOutMinutes = checkOut.hour * 60 + checkOut.minute;
+        final durationMinutes = checkOutMinutes - checkInMinutes;
+        
+        if (durationMinutes < 0) {
+          return 'Invalid duration';
+        }
+        
+        // Format duration
+        if (durationMinutes < 60) {
+          return '${durationMinutes}m';
+        } else {
+          final hours = durationMinutes ~/ 60;
+          final minutes = durationMinutes % 60;
+          if (minutes == 0) {
+            return '${hours}h';
+          } else {
+            return '${hours}h ${minutes}m';
+          }
+        }
+      }
+    } catch (e) {
+      print('Error calculating duration: $e');
+      return 'Error';
+    }
+  }
+
+  // Get attendance status text
+  String _getAttendanceStatusText(int storeId) {
+    final status = _getAttendanceStatus(storeId);
+    if (status == null) {
+      print('📋 [Status Text] Store $storeId: No attendance data - Belum check-in');
+      return 'Belum check-in';
+    }
+    
+    final isCheckedIn = status['isCheckedIn'] == true;
+    final isCheckedOut = status['isCheckedOut'] == true;
+    final checkInTime = status['checkInTime'] as String?;
+    final checkOutTime = status['checkOutTime'] as String?;
+    
+    print('📋 [Status Text] Store $storeId: Check-in=$isCheckedIn ($checkInTime), Check-out=$isCheckedOut ($checkOutTime)');
+    
+    if (!isCheckedIn || checkInTime == null) {
+      return 'Belum check-in';
+    } else if (isCheckedIn && (!isCheckedOut || checkOutTime == null)) {
+      return 'Masih di toko (Check-in: $checkInTime)';
+    } else if (isCheckedIn && isCheckedOut && checkOutTime != null) {
+      final duration = _calculateDurationFromAPI(checkInTime, checkOutTime);
+      return 'Selesai ($duration)';
+    }
+    
+    return 'Unknown status';
+  }
+
+  // Skeleton loading widget
+  Widget _buildSkeletonLoading() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        children: List.generate(3, (index) => _buildSkeletonCard()),
+      ),
+    );
+  }
+
+  Widget _buildSkeletonCard() {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.grey.withOpacity(0.1),
+            spreadRadius: 1,
+            blurRadius: 4,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              // Time skeleton
+              Container(
+                width: 60,
+                height: 20,
+                decoration: BoxDecoration(
+                  color: Colors.grey[300],
+                  borderRadius: BorderRadius.circular(4),
+                ),
+              ),
+              const SizedBox(width: 12),
+              // Store info skeleton
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      width: double.infinity,
+                      height: 16,
+                      decoration: BoxDecoration(
+                        color: Colors.grey[300],
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Container(
+                      width: 120,
+                      height: 12,
+                      decoration: BoxDecoration(
+                        color: Colors.grey[300],
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              // Progress skeleton
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: Colors.grey[300],
+                  shape: BoxShape.circle,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          // Todo items skeleton
+          ...List.generate(2, (index) => Container(
+            margin: const EdgeInsets.only(bottom: 8),
+            child: Row(
+              children: [
+                Container(
+                  width: 16,
+                  height: 16,
+                  decoration: BoxDecoration(
+                    color: Colors.grey[300],
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                child: Container(
+                    height: 12,
+                  decoration: BoxDecoration(
+                      color: Colors.grey[300],
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          )),
+        ],
+      ),
+    );
+  }
+
+
+  // Build lazy loading todo item widget
+  Widget _buildLazyTodoItem(Map<String, dynamic> item) {
+    final storeId = item['storeId'] as int? ?? 0;
+    final taskName = item['task'] as String? ?? '';
+    final storeName = item['storeName'] as String? ?? '';
+    final isCompleted = item['completed'] == true;
+    
+    // Check if we need to load completion status
+    final needsLoading = !_completionStates.containsKey('${storeId}_$taskName');
+    final isLoading = _isTodoLoading(storeId, taskName);
+    final isApiCompleted = _isTodoCompleted(storeId, taskName);
+    final completionTime = _getTodoCompletionTime(storeId, taskName);
+    
+    // Determine final completion state
+    final finalCompleted = isCompleted || isApiCompleted;
+    
+    // Auto-trigger lazy loading for attendance tasks
+    if (taskName == 'Attendance' && needsLoading && !isLoading) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _loadTodoCompletionStatus(storeId, taskName);
+      });
+    }
+    
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: InkWell(
+        onTap: () {
+          // Trigger lazy loading on tap
+          if (needsLoading && !isLoading) {
+            _loadTodoCompletionStatus(storeId, taskName);
+          }
+        },
+                  child: Row(
+                    children: [
+            Checkbox(
+              value: finalCompleted,
+              onChanged: (value) => _toggleTodoItem(item['id']),
+              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
+                      const SizedBox(width: 8),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          '$taskName - $storeName',
+                          style: TextStyle(
+                            fontSize: 12,
+                            decoration: finalCompleted
+                                ? TextDecoration.lineThrough
+                                : null,
+                            color: finalCompleted
+                                ? Colors.grey
+                                : null,
+                          ),
+                        ),
+                      ),
+                      if (isLoading)
+                        const SizedBox(
+                          width: 12,
+                          height: 12,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 1.5,
+                            color: Colors.blue,
+                          ),
+                        )
+                      else if (needsLoading)
+                        Icon(
+                          Icons.refresh,
+                          size: 12,
+                          color: Colors.grey[400],
+                      ),
+                    ],
+                  ),
+                  if (finalCompleted && completionTime != null)
+                    Text(
+                      'Selesai pada: ${_formatCompletionTime(completionTime)}',
+                      style: TextStyle(
+                        fontSize: 10,
+                        color: Colors.green[600],
+                        fontStyle: FontStyle.italic,
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
 }

@@ -580,16 +580,16 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
               const SizedBox(width: 12),
               Expanded(child: _buildCurrencyField('Total Value', item.valueController, '0')),
             ],
+              ),
+            ],
           ),
-        ],
-      ),
     );
   }
 
   Widget _buildProductDropdown(SalesItem item) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
+            children: [
         const Text(
           'Product *',
           style: TextStyle(
@@ -691,9 +691,9 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
                       color: _selectedDate != null ? Colors.black : Colors.grey[600],
                     ),
                 ),
-              ),
-            ],
           ),
+        ],
+      ),
           ),
         ),
       ],
@@ -750,16 +750,16 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
 
   Widget _buildNumberField(String label, TextEditingController controller, String hint) {
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
           label,
-          style: const TextStyle(
+            style: const TextStyle(
             fontWeight: FontWeight.w500,
             fontSize: 14,
           ),
-        ),
-        const SizedBox(height: 8),
+                  ),
+                  const SizedBox(height: 8),
         TextFormField(
           controller: controller,
       keyboardType: TextInputType.number,
@@ -782,7 +782,7 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
   Widget _buildCurrencyField(String label, TextEditingController controller, String hint) {
     return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
+                  children: [
           Text(
           label,
             style: const TextStyle(
@@ -807,9 +807,9 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
             ),
           ),
           onChanged: (value) => _calculateTotalValue(),
-        ),
-      ],
-    );
+                    ),
+                  ],
+                );
   }
 
   Widget _buildPromoDateField(SalesItem item) {
@@ -856,10 +856,10 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
                     style: TextStyle(
                       color: item.promoStartDate != null ? Colors.black : Colors.grey[600],
                         ),
-                      ),
-                    ),
-                  ],
-              ),
+            ),
+          ),
+        ],
+      ),
             ),
           ),
         ],

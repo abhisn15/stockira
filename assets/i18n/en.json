@@ -243,5 +243,6 @@
   "valueCbp": "Value CBP",
   "pricePromo": "Price Promo",
   "valuePromo": "Value Promo",
-  "totalValue": "Total Value"
+  "totalValue": "Total Value",
+  "activityOther": "Activity Other"
 }
