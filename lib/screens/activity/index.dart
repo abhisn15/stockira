@@ -87,7 +87,6 @@ class _ActivityScreenState extends State<ActivityScreen> {
   // Attendance data from API
   Map<String, Map<String, dynamic>> _attendanceData = {}; // Key: "storeId", Value: attendance details
   bool _isLoadingAttendance = false;
-  DateTime? _lastAttendanceLoadTime;
   
   // Pagination state
   int _currentPage = 1;
@@ -105,6 +104,7 @@ class _ActivityScreenState extends State<ActivityScreen> {
     _loadUserRole();
     _loadItinerariesForDate(selectedDate);
     _loadAttendanceRecords();
+    _loadAttendanceData(); // Load attendance data from API
     _loadTodoItems();
     // Refresh todo completion status on init
     _refreshTodoCompletionStatus();
@@ -406,8 +406,8 @@ int storeId,
     }
 
     // Check if specific report has been completed using API
-    String reportType = _getReportTypeFromTask(taskName);
-    if (reportType.isNotEmpty) {
+    String? reportType = _getReportTypeFromTask(taskName);
+    if (reportType != null && reportType.isNotEmpty) {
       try {
         final isReportCompleted = await ReportsApiService.isReportCompleted(
           reportType: reportType,
@@ -460,17 +460,17 @@ int storeId,
 
   Future<bool> _checkAttendanceCompletion(int storeId, String dateStr) async {
     // Check attendance status from API data
-    final attendanceStatus = _getAttendanceStatus(storeId);
-    if (attendanceStatus != null) {
-      final isCheckedIn = attendanceStatus['isCheckedIn'] == true;
-      final isCheckedOut = attendanceStatus['isCheckedOut'] == true;
+    final attendance = _attendanceData[storeId.toString()];
+    if (attendance != null) {
+      final checkInTime = attendance['check_in_time'] as String?;
+      final checkOutTime = attendance['check_out_time'] as String?;
       
       // Consider attendance completed if both check-in and check-out are done
-      if (isCheckedIn && isCheckedOut) {
-        print('✅ [Attendance API] Store $storeId: Check-in: ${attendanceStatus['checkInTime']}, Check-out: ${attendanceStatus['checkOutTime']} - COMPLETED');
+      if (checkInTime != null && checkOutTime != null) {
+        print('✅ [Attendance API] Store $storeId: Check-in: $checkInTime, Check-out: $checkOutTime - COMPLETED');
         return true;
-      } else if (isCheckedIn && !isCheckedOut) {
-        print('🔄 [Attendance API] Store $storeId: Check-in: ${attendanceStatus['checkInTime']}, Check-out: null - IN PROGRESS');
+      } else if (checkInTime != null && checkOutTime == null) {
+        print('🔄 [Attendance API] Store $storeId: Check-in: $checkInTime, Check-out: null - IN PROGRESS');
         return false;
       } else {
         print('❌ [Attendance API] Store $storeId: No check-in data - NOT STARTED');
@@ -491,7 +491,7 @@ int storeId,
     return hasCheckIn;
   }
 
-  String _getReportTypeFromTask(String taskName) {
+  String? _getReportTypeFromTask(String taskName) {
     // Map task names to report types (matching API report types)
     final taskToReportMap = {
       'OOS': 'out_of_stock',
@@ -515,13 +515,13 @@ int storeId,
       'Customer Feedback': 'customer_feedback',
     };
 
-    return taskToReportMap[taskName] ?? '';
+    return taskToReportMap[taskName];
   }
 
   Future<String?> _getActualCompletionTime(int storeId, String taskName, String dateStr) async {
     try {
-      String reportType = _getReportTypeFromTask(taskName);
-      if (reportType.isNotEmpty) {
+      String? reportType = _getReportTypeFromTask(taskName);
+      if (reportType != null && reportType.isNotEmpty) {
         final completionTime = await ReportsApiService.getReportCompletionTime(
           reportType: reportType,
           date: dateStr,
@@ -599,24 +599,6 @@ int storeId,
     });
   }
 
-  void _toggleTodoItem(int id) {
-    setState(() {
-      final index = todoItems.indexWhere((item) => item['id'] == id);
-      if (index != -1) {
-        todoItems[index]['completed'] = !todoItems[index]['completed'];
-      }
-    });
-    _saveTodoItems();
-    _updateProgress();
-  }
-
-  void _deleteTodoItem(int id) {
-    setState(() {
-      todoItems.removeWhere((item) => item['id'] == id);
-    });
-    _saveTodoItems();
-    _updateProgress();
-  }
 
   Future<void> _clearAllActivities() async {
     setState(() {
@@ -1120,29 +1102,449 @@ int storeId,
 
   // Placeholder methods for remaining functionality
   Widget _buildStoreVisitItem(BuildContext context, Map<String, dynamic> storeVisit, int index) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.grey[200]!),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.grey.withOpacity(0.1),
-            blurRadius: 4,
-            offset: const Offset(0, 2),
+    final storeName = storeVisit['storeName'] as String? ?? 'Unknown Store';
+    final storeId = storeVisit['storeId'] as int? ?? 0;
+    final completedTasks = storeVisit['completedTasks'] as int? ?? 0;
+    final totalTasks = storeVisit['totalTasks'] as int? ?? 0;
+    final todos = storeVisit['todos'] as List<Map<String, dynamic>>? ?? [];
+    
+    return StatefulBuilder(
+      builder: (context, setState) {
+        // Use a key to maintain state for each store
+        final storeKey = '${storeName}_$index';
+        bool isExpanded = _expandedStores[storeKey] ?? false;
+        
+        return Container(
+          margin: const EdgeInsets.only(bottom: 12),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: Colors.grey[200]!),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.grey.withOpacity(0.1),
+                blurRadius: 4,
+                offset: const Offset(0, 2),
+              ),
+            ],
           ),
-        ],
-      ),
-      child: Text('Store: ${storeVisit['storeName']}'),
+          child: Column(
+            children: [
+              // Main store visit info
+              InkWell(
+                onTap: () {
+                  setState(() {
+                    _expandedStores[storeKey] = !isExpanded;
+                  });
+                  // Also update the main widget state
+                  this.setState(() {});
+                },
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Row(
+                    children: [
+                      // Time
+                      // Container(
+                      //   width: 60,
+                      //   child: Text(
+                      //     _getAttendanceStatusText(storeId),
+                      //     style: TextStyle(
+                      //       fontSize: 14,
+                      //       fontWeight: FontWeight.bold,
+                      //       color: _getAttendanceStatus(storeId) ? const Color(0xFF29BDCE) : Colors.grey[400],
+                      //     ),
+                      //   ),
+                      // ),
+                      
+                      // const SizedBox(width: 12),
+                      
+                      // Store icon and name
+                      Container(
+                        width: 80,
+                        height: 80,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF29BDCE).withOpacity(0.1),
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(
+                          Icons.store,
+                          color: Color(0xFF29BDCE),
+                          size: 60,
+                        ),
+                      ),
+                      
+                      const SizedBox(width: 12),
+                      
+                      // Store details
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              storeName,
+                              style: const TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              _getAttendanceStatusText(storeId),
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: _getAttendanceStatus(storeId) ? const Color(0xFF29BDCE) : Colors.grey[500],
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Row(
+                              children: [
+                                Text(
+                                  translate('progress') + ': ',
+                                  style: const TextStyle(
+                                    fontSize: 12,
+                                    color: Colors.grey,
+                                  ),
+                                ),
+                                Text(
+                                  '$completedTasks/$totalTasks',
+                                  style: const TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.bold,
+                                    color: Color(0xFF29BDCE),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 4),
+                            LinearProgressIndicator(
+                              value: totalTasks > 0 ? completedTasks / totalTasks : 0,
+                              backgroundColor: Colors.grey[300],
+                              valueColor: AlwaysStoppedAnimation<Color>(
+                                completedTasks == totalTasks ? Colors.green : const Color(0xFF29BDCE),
+                              ),
+                              minHeight: 4,
+                            ),
+                          ],
+                        ),
+                      ),
+                      
+                      // Dropdown arrow
+                      Icon(
+                        isExpanded ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down,
+                        color: Colors.grey[600],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              
+              // Expanded task details
+              if (isExpanded) ...[
+                Container(
+                  width: double.infinity,
+                  height: 1,
+                  color: Colors.grey[200],
+                ),
+                Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        translate('taskDetails'),
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF29BDCE),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      _buildTimelineTodos(todos),
+                    ],
+                  ),
+                ),
+              ],
+            ],
+          ),
+        );
+      },
     );
   }
 
   Widget _buildLazyTodoItem(Map<String, dynamic> item) {
+    final isCompleted = item['completed'] == true;
+    final taskName = item['task'] as String? ?? 'Unknown Task';
+    final storeName = item['storeName'] as String? ?? 'Unknown Store';
+    final storeId = item['storeId'] as int? ?? 0;
+    final key = '${storeId}_$taskName';
+    final isLoading = _loadingStates[key] ?? false;
+    final completionTime = _completionTimes[key];
+    
     return Container(
-      padding: const EdgeInsets.all(8),
-      child: Text('Todo: ${item['task']}'),
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: isCompleted ? Colors.green.withOpacity(0.05) : Colors.grey[50],
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: isCompleted ? Colors.green.withOpacity(0.3) : Colors.grey[200]!,
+          width: 1,
+        ),
+      ),
+      child: Row(
+        children: [
+          // Status indicator
+          Container(
+            width: 20,
+            height: 20,
+            decoration: BoxDecoration(
+              color: isCompleted ? Colors.green : Colors.grey[400],
+              shape: BoxShape.circle,
+            ),
+            child: isCompleted
+                ? const Icon(Icons.check, color: Colors.white, size: 12)
+                : isLoading
+                    ? const SizedBox(
+                        width: 12,
+                        height: 12,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          valueColor: AlwaysStoppedAnimation<Color>(Colors.blue),
+                        ),
+                      )
+                    : const Icon(Icons.radio_button_unchecked, color: Colors.white, size: 12),
+          ),
+          
+          const SizedBox(width: 12),
+          
+          // Task info
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  taskName,
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                    color: isCompleted ? Colors.green[700] : Colors.black87,
+                    decoration: isCompleted ? TextDecoration.lineThrough : null,
+                  ),
+                ),
+                Text(
+                  storeName,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Colors.grey[600],
+                  ),
+                ),
+                if (isCompleted && completionTime != null) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    'Selesai pada: ${_formatCompletionTime(completionTime)}',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: Colors.green[600],
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          
+          // Action button
+          if (!isCompleted && !isLoading)
+            GestureDetector(
+              onTap: () => _loadTodoCompletionStatus(storeId, taskName),
+              child: Container(
+                padding: const EdgeInsets.all(6),
+                decoration: BoxDecoration(
+                  color: Colors.blue.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: const Icon(
+                  Icons.refresh,
+                  size: 16,
+                  color: Colors.blue,
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTimelineTodos(List<Map<String, dynamic>> todos) {
+    return Column(
+      children: todos.asMap().entries.map((entry) {
+        final index = entry.key;
+        final todo = entry.value;
+        final isCompleted = todo['completed'] == true;
+        final taskName = todo['task'] as String? ?? 'Unknown Task';
+        final isLast = index == todos.length - 1;
+        
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Timeline indicator
+            Column(
+              children: [
+                // Timeline dot
+                Container(
+                  width: 24,
+                  height: 24,
+                  decoration: BoxDecoration(
+                    color: isCompleted ? Colors.green : Colors.grey[400],
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: isCompleted ? Colors.green : Colors.grey[400]!,
+                      width: 2,
+                    ),
+                  ),
+                  child: isCompleted
+                      ? const Icon(Icons.check, color: Colors.white, size: 14)
+                      : Center(
+                          child: Text(
+                            '${index + 1}',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                ),
+                // Timeline line
+                if (!isLast)
+                  Container(
+                    width: 2,
+                    height: 60,
+                    color: Colors.grey[300],
+                  ),
+              ],
+            ),
+            
+            const SizedBox(width: 16),
+            
+            // Task content
+            Expanded(
+              child: Container(
+                margin: const EdgeInsets.only(bottom: 16),
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: isCompleted ? Colors.green.withOpacity(0.05) : Colors.grey[50],
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: isCompleted ? Colors.green.withOpacity(0.3) : Colors.grey[200]!,
+                    width: 1,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.grey.withOpacity(0.1),
+                      blurRadius: 4,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            taskName,
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                              color: isCompleted ? Colors.green[700] : Colors.black87,
+                              decoration: isCompleted ? TextDecoration.lineThrough : null,
+                            ),
+                          ),
+                        ),
+                        if (isCompleted)
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: Colors.green,
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Text(
+                              translate('done'),
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                    
+                    const SizedBox(height: 8),
+                    
+                    Text(
+                      isCompleted 
+                          ? translate('taskAutoCompleted') 
+                          : translate('taskWillAutoComplete'),
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: isCompleted ? Colors.green[600] : Colors.grey[600],
+                      ),
+                    ),
+                    
+                    if (isCompleted && todo['completedTime'] != null) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        translate('completedAt') + ': ${_formatCompletionTime(todo['completedTime'])}',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.green[600],
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                    
+                    if (!isCompleted) ...[
+                      const SizedBox(height: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: Colors.orange.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: Colors.orange.withOpacity(0.3)),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(
+                              Icons.info_outline,
+                              color: Colors.orange[600],
+                              size: 16,
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                translate('taskWillAutoComplete'),
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.orange[600],
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+          ],
+        );
+      }).toList(),
     );
   }
 
@@ -1164,17 +1566,193 @@ int storeId,
     return months[month - 1];
   }
 
-  // Placeholder methods for attendance functionality
+  // Attendance status methods
+  bool _getAttendanceStatus(int storeId) {
+    final attendance = _attendanceData[storeId.toString()];
+    if (attendance == null) return false;
+    
+    final checkInTime = attendance['check_in_time'] as String?;
+    final checkOutTime = attendance['check_out_time'] as String?;
+    
+    return checkInTime != null && checkOutTime != null;
+  }
+
+  String _getAttendanceStatusText(int storeId) {
+    final attendance = _attendanceData[storeId.toString()];
+    if (attendance == null) return 'Belum check-in';
+    
+    final checkInTime = attendance['check_in_time'] as String?;
+    final checkOutTime = attendance['check_out_time'] as String?;
+    
+    if (checkInTime == null) {
+      return 'Belum check-in';
+    } else if (checkOutTime == null) {
+      return 'Masih di toko (Check-in: ${checkInTime.substring(0, 5)})';
+    } else {
+      final duration = _calculateDurationFromAPI(checkInTime, checkOutTime);
+      return 'Selesai ($duration)';
+    }
+  }
+
+  String _formatCompletionTime(String? completionTime) {
+    if (completionTime == null) return '';
+    
+    try {
+      final dateTime = DateTime.parse(completionTime);
+      return '${dateTime.hour.toString().padLeft(2, '0')}:${dateTime.minute.toString().padLeft(2, '0')}';
+    } catch (e) {
+      return completionTime;
+    }
+  }
+
+  Future<void> _loadTodoCompletionStatus(int storeId, String taskName) async {
+    final key = '${storeId}_$taskName';
+    
+    setState(() {
+      _loadingStates[key] = true;
+    });
+
+    try {
+      final dateStr = '${selectedDate.year.toString().padLeft(4, '0')}-${selectedDate.month.toString().padLeft(2, '0')}-${selectedDate.day.toString().padLeft(2, '0')}';
+      final reportType = _getReportTypeFromTask(taskName);
+      
+      if (reportType != null) {
+        final isCompleted = await ReportsApiService.isReportCompleted(
+          storeId: storeId, 
+          reportType: reportType, 
+          date: dateStr
+        );
+        final completionTime = isCompleted 
+            ? await ReportsApiService.getReportCompletionTime(
+                storeId: storeId, 
+                reportType: reportType, 
+                date: dateStr
+              )
+            : null;
+        
+        setState(() {
+          _completionStates[key] = isCompleted;
+          _completionTimes[key] = completionTime;
+          _loadingStates[key] = false;
+        });
+      }
+    } catch (e) {
+      print('Error loading todo completion status: $e');
+      setState(() {
+        _loadingStates[key] = false;
+      });
+    }
+  }
+
+
+  String _calculateDurationFromAPI(String? checkInTime, String? checkOutTime) {
+    if (checkInTime == null) return '0h 0m';
+    
+    try {
+      final checkIn = DateTime.parse('2024-01-01 $checkInTime');
+      final checkOut = checkOutTime != null 
+          ? DateTime.parse('2024-01-01 $checkOutTime')
+          : DateTime.now();
+      
+      final duration = checkOut.difference(checkIn);
+      final hours = duration.inHours;
+      final minutes = duration.inMinutes % 60;
+      
+      if (checkOutTime == null) {
+        return '${hours}h ${minutes}m (live)';
+      } else {
+        return '${hours}h ${minutes}m';
+      }
+    } catch (e) {
+      return '0h 0m';
+    }
+  }
+
+  // Attendance data loading from API
   Future<void> _loadAttendanceData() async {
-    // TODO: Implement attendance data loading
+    if (_isLoadingAttendance) return;
+    
+    setState(() {
+      _isLoadingAttendance = true;
+    });
+
+    try {
+      final token = await AuthService.getToken();
+      
+      if (token == null) {
+        print('❌ [Attendance API] No auth token available');
+        return;
+      }
+
+      final response = await http.get(
+        Uri.parse('${Env.apiBaseUrl}/attendances/store/check-in'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+      );
+
+      print('📡 [Attendance API] Response status: ${response.statusCode}');
+      
+      if (response.statusCode == 200) {
+        final responseData = json.decode(response.body);
+        print('📡 [Attendance API] Response data: $responseData');
+        
+        if (responseData['success'] == true && responseData['data'] != null) {
+          final List<dynamic> attendanceList = responseData['data'];
+          
+          // Clear previous data
+          _attendanceData.clear();
+          
+          // Process attendance data
+          for (var attendance in attendanceList) {
+            final List<dynamic> details = attendance['details'] ?? [];
+            
+            for (var detail in details) {
+              final storeId = detail['store_id']?.toString() ?? '';
+              if (storeId.isNotEmpty) {
+                _attendanceData[storeId] = {
+                  'check_in_time': detail['check_in_time'],
+                  'check_out_time': detail['check_out_time'],
+                  'store_name': detail['store_name'],
+                  'distance_in': detail['distance_in'],
+                  'distance_out': detail['distance_out'],
+                  'note_in': detail['note_in'],
+                  'note_out': detail['note_out'],
+                  'image_url_in': detail['image_url_in'],
+                  'image_url_out': detail['image_url_out'],
+                  'created_at': detail['created_at'],
+                  'updated_at': detail['updated_at'],
+                };
+                
+                print('✅ [Attendance API] Loaded data for store $storeId: checkIn=${detail['check_in_time']}, checkOut=${detail['check_out_time']}');
+              }
+            }
+          }
+          
+          print('📊 [Attendance API] Loaded ${_attendanceData.length} store attendance records');
+          
+          // Update UI
+          setState(() {});
+        } else {
+          print('❌ [Attendance API] Invalid response format');
+        }
+      } else {
+        print('❌ [Attendance API] Failed to load attendance data: ${response.statusCode}');
+        print('❌ [Attendance API] Response body: ${response.body}');
+      }
+    } catch (e) {
+      print('❌ [Attendance API] Error loading attendance data: $e');
+    } finally {
+      setState(() {
+        _isLoadingAttendance = false;
+      });
+    }
   }
 
   Future<void> _refreshAttendanceData() async {
-    // TODO: Implement attendance data refresh
+    print('🔄 [Attendance API] Refreshing attendance data...');
+    await _loadAttendanceData();
   }
 
-  Map<String, dynamic>? _getAttendanceStatus(int storeId) {
-    // TODO: Implement attendance status retrieval
-    return null;
-  }
 }

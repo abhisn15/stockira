@@ -2,10 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:image_picker/image_picker.dart';
-import 'dart:io';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
 import '../../../models/itinerary.dart';
 import '../../../services/attendance_service.dart';
 import '../../../services/maps_service.dart';
+import '../../../services/auth_service.dart';
+import '../../../config/env.dart';
 
 class MapsCheckinSimpleScreen extends StatefulWidget {
   final List<Itinerary> itineraryList;
@@ -20,7 +23,6 @@ class MapsCheckinSimpleScreen extends StatefulWidget {
 }
 
 class _MapsCheckinSimpleScreenState extends State<MapsCheckinSimpleScreen> {
-  GoogleMapController? _mapController;
   Position? _currentPosition;
   Store? _selectedStore;
   XFile? _selectedImage;
@@ -33,17 +35,20 @@ class _MapsCheckinSimpleScreenState extends State<MapsCheckinSimpleScreen> {
   final MapsService _mapsService = MapsService();
   
   Set<Marker> _markers = {};
-  late DateTime _currentTime;
+  
+  // Store attendance data
+  Set<int> _checkedInStoreIds = {};
+  bool _isLoadingAttendance = false;
 
   // Validation
   bool get _isDistanceValid => _selectedStore != null && _currentPosition != null && _getDistanceToStore() <= 100;
-  bool get _isPhotoValid => _selectedImage != null;
-  bool get _isNoteValid => _note.trim().isNotEmpty;
 
   @override
   void initState() {
     super.initState();
-    _currentTime = DateTime.now();
+    
+    // Load attendance data to filter already checked-in stores
+    _loadAttendanceData();
     
     // Initialize maps safely
     try {
@@ -183,12 +188,86 @@ class _MapsCheckinSimpleScreenState extends State<MapsCheckinSimpleScreen> {
     }
   }
 
+  // Load attendance data to get checked-in store IDs
+  Future<void> _loadAttendanceData() async {
+    setState(() {
+      _isLoadingAttendance = true;
+    });
+
+    try {
+      final token = await AuthService.getToken();
+      
+      if (token == null) {
+        print('❌ [Check-in] No auth token available');
+        return;
+      }
+
+      final response = await http.get(
+        Uri.parse('${Env.apiBaseUrl}/attendances/store/check-in'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+      );
+
+      print('📡 [Check-in] Attendance API response status: ${response.statusCode}');
+      
+      if (response.statusCode == 200) {
+        final responseData = json.decode(response.body);
+        
+        if (responseData['success'] == true && responseData['data'] != null) {
+          final List<dynamic> attendanceList = responseData['data'];
+          
+          // Clear previous data
+          _checkedInStoreIds.clear();
+          
+          // Process attendance data to get checked-in store IDs
+          for (var attendance in attendanceList) {
+            final List<dynamic> details = attendance['details'] ?? [];
+            
+            for (var detail in details) {
+              final storeId = detail['store_id'] as int?;
+              if (storeId != null) {
+                _checkedInStoreIds.add(storeId);
+                print('✅ [Check-in] Store $storeId already checked-in');
+              }
+            }
+          }
+          
+          print('📊 [Check-in] Found ${_checkedInStoreIds.length} already checked-in stores');
+          
+          // Update UI
+          setState(() {});
+        } else {
+          print('❌ [Check-in] Invalid attendance response format');
+        }
+      } else {
+        print('❌ [Check-in] Failed to load attendance data: ${response.statusCode}');
+      }
+    } catch (e) {
+      print('❌ [Check-in] Error loading attendance data: $e');
+    } finally {
+      setState(() {
+        _isLoadingAttendance = false;
+      });
+    }
+  }
+
   List<Store> _getAllStores() {
     final stores = <Store>[];
     for (var itinerary in widget.itineraryList) {
       stores.addAll(itinerary.stores);
     }
     return stores;
+  }
+
+  // Get available stores (excluding already checked-in stores)
+  List<Store> _getAvailableStores() {
+    final allStores = _getAllStores();
+    final availableStores = allStores.where((store) => !_checkedInStoreIds.contains(store.id)).toList();
+    
+    print('📊 [Check-in] Available stores: ${availableStores.length}/${allStores.length}');
+    return availableStores;
   }
 
   Future<void> _performSimpleCheckIn() async {
@@ -298,9 +377,6 @@ class _MapsCheckinSimpleScreenState extends State<MapsCheckinSimpleScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final screenSize = MediaQuery.of(context).size;
-    final isSmallScreen = screenSize.width < 360;
-    final isLargeScreen = screenSize.width > 414;
     
     return Scaffold(
       backgroundColor: Colors.white,
@@ -309,6 +385,24 @@ class _MapsCheckinSimpleScreenState extends State<MapsCheckinSimpleScreen> {
         backgroundColor: Colors.white,
         foregroundColor: Colors.black87,
         elevation: 0,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.my_location, color: Colors.cyan),
+            onPressed: () {
+              print('🔄 [Check-in] Refreshing location...');
+              _getCurrentLocation();
+            },
+            tooltip: 'Refresh Location',
+          ),
+          IconButton(
+            icon: const Icon(Icons.refresh, color: Colors.cyan),
+            onPressed: () {
+              print('🔄 [Check-in] Reloading data...');
+              _loadAttendanceData();
+            },
+            tooltip: 'Reload Data',
+          ),
+        ],
       ),
       body: _isLoading
           ? const Center(
@@ -342,7 +436,6 @@ class _MapsCheckinSimpleScreenState extends State<MapsCheckinSimpleScreen> {
                               ),
                               onMapCreated: (GoogleMapController controller) {
                                 print('✅ Simple map created');
-                                _mapController = controller;
                                 _updateMarkers();
                               },
                               markers: _markers,
@@ -374,14 +467,68 @@ class _MapsCheckinSimpleScreenState extends State<MapsCheckinSimpleScreen> {
   }
 
   Widget _buildSimpleStoreList() {
-    final stores = _getAllStores();
+    final stores = _getAvailableStores();
+    
+    if (_isLoadingAttendance) {
+      return const Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            CircularProgressIndicator(),
+            SizedBox(height: 16),
+            Text('Loading available stores...'),
+          ],
+        ),
+      );
+    }
+    
+    if (stores.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.store, size: 64, color: Colors.grey),
+            const SizedBox(height: 16),
+            const Text(
+              'No available stores',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'All stores have been checked-in today',
+              style: TextStyle(color: Colors.grey[600]),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      );
+    }
     
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          'Select Store (${stores.length} available)',
-          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                'Select Store (${stores.length} available)',
+                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              ),
+            ),
+            IconButton(
+              icon: _isLoadingAttendance 
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.refresh),
+              onPressed: _isLoadingAttendance ? null : () {
+                _loadAttendanceData();
+              },
+              tooltip: 'Refresh available stores',
+            ),
+          ],
         ),
         const SizedBox(height: 12),
         Expanded(

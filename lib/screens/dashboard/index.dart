@@ -1,6 +1,5 @@
 import 'dart:convert';
 import 'dart:async';
-import 'package:http/http.dart' as http;
 import '../payslip/index.dart';
 import '../activity/index.dart';
 import '../../components/bottom_navigation.dart';
@@ -13,14 +12,13 @@ import 'package:stockira/screens/permit/index.dart';
 import 'package:stockira/screens/itinerary/index.dart';
 import 'package:stockira/screens/reports/index.dart';
 import 'package:stockira/screens/Availability/index.dart';
+import 'package:stockira/screens/store_mapping/index.dart';
 import 'package:stockira/screens/auth/index.dart';
 import 'package:stockira/screens/url_setting/index.dart';
 import 'package:stockira/services/attendance_service.dart';
 import 'package:stockira/services/auth_service.dart';
 import 'package:stockira/services/itinerary_service.dart';
 import 'package:stockira/services/maps_service.dart';
-import 'package:stockira/services/report_completion_service.dart';
-import 'package:stockira/services/reports_api_service.dart';
 import 'package:stockira/config/maps_config.dart';
 import 'package:stockira/models/attendance_record.dart';
 import 'package:stockira/models/itinerary.dart';
@@ -29,7 +27,6 @@ import 'package:stockira/widgets/realtime_timer_widget.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../services/settings_service.dart';
-import '../../services/language_service.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:flutter_translate/flutter_translate.dart';
@@ -724,45 +721,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
     setState(() {});
   }
 
-  // Get attendance status for a store (placeholder)
-  Map<String, dynamic>? _getAttendanceStatus(int storeId) {
-    // This method will be implemented when needed
-    return null;
-  }
-
-  // Calculate active itinerary count (stores that are not yet checked out)
+  // Calculate active itinerary count (all stores from itinerary API)
   int _calculateActiveItineraryCount(List<dynamic> stores) {
-    int activeCount = 0;
-    
-    for (final store in stores) {
-      final storeId = store['id'] as int? ?? 0;
-      final attendanceStatus = _getAttendanceStatus(storeId);
-      
-      if (attendanceStatus == null) {
-        // No attendance data - store is still active
-        activeCount++;
-        print('🏪 Store $storeId: No attendance data - ACTIVE');
-      } else {
-        final checkInTime = attendanceStatus['checkInTime'] as String?;
-        final checkOutTime = attendanceStatus['checkOutTime'] as String?;
-        
-        if (checkInTime != null && checkOutTime == null) {
-          // Checked in but not checked out - still active
-          activeCount++;
-          print('🏪 Store $storeId: Checked in but not out - ACTIVE (Check-in: $checkInTime)');
-        } else if (checkInTime == null) {
-          // Not checked in - still active
-          activeCount++;
-          print('🏪 Store $storeId: Not checked in - ACTIVE');
-        } else if (checkInTime != null && checkOutTime != null) {
-          // Both checked in and out - completed
-          print('🏪 Store $storeId: Checked in and out - COMPLETED (Check-in: $checkInTime, Check-out: $checkOutTime)');
-        }
-      }
-    }
-    
-    print('📊 Total active itineraries: $activeCount out of ${stores.length}');
-    return activeCount;
+    // Simply return the total number of stores from itinerary API
+    // No need to match with attendance data for itinerary count
+    final totalStores = stores.length;
+    print('📊 Total itineraries from API: $totalStores stores');
+    return totalStores;
   }
 
   Future<void> _loadItineraryCount() async {
@@ -2060,6 +2025,20 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                   );
                                 },
                               ),
+                              _buildFeatureIcon(
+                                context: context,
+                                icon: Icons.map,
+                                label: 'Store Mapping',
+                                color: Colors.indigo,
+                                onTap: () {
+                                  Navigator.of(context).pop();
+                                  Navigator.of(context).push(
+                                    MaterialPageRoute(
+                                      builder: (_) => const StoreMappingScreen(),
+                                    ),
+                                  );
+                                },
+                              ),
                             ],
                           );
                         },
@@ -3024,26 +3003,6 @@ class DashboardHome extends StatelessWidget {
     );
   }
 
-  Future<void> _saveTodayRecordToStorage(AttendanceRecord record) async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final recordData = {
-        'storeId': record.storeId,
-        'storeName': record.storeName,
-        'checkInTime': record.checkInTime?.toIso8601String(),
-        'checkOutTime': record.checkOutTime?.toIso8601String(),
-        'isCheckedIn': record.isCheckedIn,
-        'date': record.date.toIso8601String(),
-      };
-
-      await prefs.setString('today_attendance_record', jsonEncode(recordData));
-      print(
-        '💾 Saved today record to local storage: store ${record.storeId}, checkIn=${record.checkInTime}, checkOut=${record.checkOutTime}',
-      );
-    } catch (e) {
-      print('❌ Error saving today record to local storage: $e');
-    }
-  }
 }
 
 

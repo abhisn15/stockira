@@ -4,7 +4,11 @@ import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:image_picker/image_picker.dart';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
 import '../../../services/attendance_service.dart';
+import '../../../services/auth_service.dart';
+import '../../../config/env.dart';
 import '../../../models/attendance_record.dart';
 import 'package:flutter_translate/flutter_translate.dart';
 
@@ -32,6 +36,9 @@ class _MapsCheckoutScreenState extends State<MapsCheckoutScreen> {
   XFile? _selectedImage;
   final TextEditingController _noteController = TextEditingController();
   bool _isSubmitting = false;
+  
+  // Reload data state
+  bool _isReloadingData = false;
 
   @override
   void initState() {
@@ -90,6 +97,74 @@ class _MapsCheckoutScreenState extends State<MapsCheckoutScreen> {
           _isLoading = false;
         });
       }
+    }
+  }
+
+  // Reload attendance data
+  Future<void> _reloadAttendanceData() async {
+    setState(() {
+      _isReloadingData = true;
+    });
+
+    try {
+      final token = await AuthService.getToken();
+      
+      if (token == null) {
+        print('❌ [Check-out] No auth token available');
+        return;
+      }
+
+      final response = await http.get(
+        Uri.parse('${Env.apiBaseUrl}/attendances/store/check-in'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+      );
+
+      print('📡 [Check-out] Attendance API response status: ${response.statusCode}');
+      
+      if (response.statusCode == 200) {
+        json.decode(response.body); // Parse response to validate
+        print('✅ [Check-out] Attendance data reloaded successfully');
+        
+        // Show success message
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Attendance data reloaded successfully'),
+              backgroundColor: Colors.green,
+              duration: Duration(seconds: 2),
+            ),
+          );
+        }
+      } else {
+        print('❌ [Check-out] Failed to reload attendance data: ${response.statusCode}');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Failed to reload attendance data'),
+              backgroundColor: Colors.red,
+              duration: Duration(seconds: 2),
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      print('❌ [Check-out] Error reloading attendance data: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error reloading data: $e'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    } finally {
+      setState(() {
+        _isReloadingData = false;
+      });
     }
   }
 
@@ -427,8 +502,19 @@ class _MapsCheckoutScreenState extends State<MapsCheckoutScreen> {
         actions: [
           IconButton(
             onPressed: _refreshLocation,
-            icon: const Icon(Icons.refresh),
+            icon: const Icon(Icons.my_location),
             tooltip: 'Refresh location',
+          ),
+          IconButton(
+            onPressed: _isReloadingData ? null : _reloadAttendanceData,
+            icon: _isReloadingData 
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                  )
+                : const Icon(Icons.refresh),
+            tooltip: 'Reload data',
           ),
           if (widget.currentRecord.details.isNotEmpty)
             IconButton(

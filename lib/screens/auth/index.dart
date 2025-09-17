@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import '../../services/language_service.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_translate/flutter_translate.dart';
-import 'package:stockira/screens/dashboard/index.dart';
+import 'package:stockira/screens/Dashboard/index.dart';
 import 'package:stockira/screens/url_setting/index.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:stockira/services/auth_service.dart';
