@@ -68,7 +68,7 @@ class StoreMappingService {
       final token = await AuthService.getToken();
       if (token == null) throw Exception('No authentication token');
 
-      String url = '${Env.apiBaseUrl}/areas';
+      String url = '${Env.apiBaseUrl}/areas?search=$search';
       if (search != null && search.isNotEmpty) {
         url += '?search=$search';
       }
@@ -152,6 +152,29 @@ class StoreMappingService {
       throw Exception('Failed to load employee stores');
     } catch (e) {
       throw Exception('Error loading employee stores: $e');
+    }
+  }
+
+  Future<bool> addStoresToEmployee(List<int> storeIds) async {
+    try {
+      final token = await AuthService.getToken();
+      if (token == null) throw Exception('No authentication token');
+
+      final response = await http.post(
+        Uri.parse('${Env.apiBaseUrl}/employees/stores'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+        body: json.encode({'store_ids': storeIds}),
+      );
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        return true;
+      }
+      throw Exception('Failed to add stores to employee');
+    } catch (e) {
+      throw Exception('Error adding stores to employee: $e');
     }
   }
 

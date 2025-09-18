@@ -12,6 +12,14 @@
 .swiftpm/
 migrate_working_dir/
 
+#Readme
+README_SECURITY.md
+SECURITY.md
+SECURITY_SETUP.md
+scripts/check-security.sh
+scripts/setup-security.sh
+scripts/remove-debug-prints.sh
+
 # IntelliJ related
 *.iml
 *.ipr

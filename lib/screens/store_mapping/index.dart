@@ -17,24 +17,26 @@ class StoreMappingScreen extends StatefulWidget {
 class _StoreMappingScreenState extends State<StoreMappingScreen>
     with TickerProviderStateMixin {
   final StoreMappingService _storeMappingService = StoreMappingService();
-  final ImagePicker _imagePicker = ImagePicker();
 
-  List<Area> _areas = [];
-  List<Store> _stores = [];
-  List<Store> _allStores = []; // All stores for filtering
+  // Main screen data
+  List<Store> _mappedStores = []; // Stores yang sudah ditambahkan ke mapping
+  bool _isLoadingMappedStores = false;
+  
+  // Add store screen data
+  final List<Area> _areas = [];
+  List<SubArea> _subAreas = [];
+  List<Store> _availableStores = []; // Stores yang bisa dipilih untuk ditambahkan
   List<Store> _visitedStores = [];
-  List<Store> _filteredStores = []; // Filtered stores for display
   
   Area? _selectedArea;
-  String _searchQuery = '';
+  SubArea? _selectedSubArea;
+  final Set<int> _selectedStoreIds = {}; // Store IDs yang dipilih untuk ditambahkan
   
-  bool _isLoadingAreas = false;
   bool _isLoadingStores = false;
   bool _isLoadingVisitedStores = false;
-  bool _isInitialLoading = true; // For initial loading check
+  bool _isAddingStores = false;
   
   Position? _currentPosition;
-  File? _selectedImage;
   
   final TextEditingController _searchController = TextEditingController();
   final TextEditingController _reasonController = TextEditingController();
@@ -54,25 +56,8 @@ class _StoreMappingScreenState extends State<StoreMappingScreen>
         _loadVisitedStores();
       }
     });
-    _initializeData();
-  }
-
-  Future<void> _initializeData() async {
-    setState(() {
-      _isInitialLoading = true;
-    });
-    
-    await Future.wait([
-      _loadAreas(),
-      _getCurrentLocation(),
-    ]);
-    
-    // Load all stores by default
-    await _loadAllStores();
-    
-    setState(() {
-      _isInitialLoading = false;
-    });
+    _loadMappedStores();
+    _getCurrentLocation();
   }
 
   @override
@@ -83,40 +68,75 @@ class _StoreMappingScreenState extends State<StoreMappingScreen>
     super.dispose();
   }
 
-  Future<void> _loadAreas() async {
+  Future<void> _loadMappedStores() async {
     setState(() {
-      _isLoadingAreas = true;
+      _isLoadingMappedStores = true;
     });
     try {
-      // For demo purposes, load sample data
+      // Load stores that are already mapped/assigned to employee
       await Future.delayed(const Duration(seconds: 1));
       
-      final sampleAreas = [
-        Area(id: 1, name: 'Makassar', description: 'SULAWESI SELATAN'),
-        Area(id: 2, name: 'Pekanbaru', description: 'RIAU'),
-        Area(id: 3, name: 'Kendari', description: 'Sulawesi Tenggara'),
-        Area(id: 4, name: 'Palembang', description: 'SUMATERA SELATAN'),
-        Area(id: 5, name: 'Manado', description: 'Sulawesi Utara'),
-        Area(id: 6, name: 'Ambon', description: 'Maluku'),
-        Area(id: 7, name: 'Samarinda', description: 'Kalimantan Timur'),
-        Area(id: 8, name: 'Malang', description: 'JAWA TIMUR'),
-        Area(id: 9, name: 'Lampung', description: 'LAMPUNG'),
-        Area(id: 10, name: 'Solo', description: 'JAWA TENGAH'),
-        Area(id: 11, name: 'Bandung', description: 'JAWA BARAT'),
-        Area(id: 12, name: 'Karawang', description: 'JAWA BARAT'),
+      // For demo purposes, load sample mapped stores
+      final sampleMappedStores = [
+        Store(
+          id: 30929,
+          name: 'Hari Hari ITC Fatmawati',
+          address: 'Jl. Raya Karang Bolong No.11, RT.1/RW.5, Cipete Utara, Kec. Kby. Baru, Kota Jakarta Selatan',
+          latitude: -6.2615,
+          longitude: 106.8106,
+          areaId: 1,
+          areaName: 'Jakarta Selatan',
+        ),
+        Store(
+          id: 57078,
+          name: 'warkop A',
+          address: 'Blok B2 No.26, Jl. Fatmawati No.26, RT.1/RW.5, Cipete Utara',
+          latitude: -6.2600,
+          longitude: 106.8110,
+          areaId: 1,
+          areaName: 'Jakarta Selatan',
+        ),
       ];
       
       setState(() {
-        _areas = sampleAreas;
-        _isLoadingAreas = false;
+        _mappedStores = sampleMappedStores;
+        _isLoadingMappedStores = false;
       });
     } catch (e) {
       setState(() {
-        _isLoadingAreas = false;
+        _isLoadingMappedStores = false;
       });
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error loading areas: $e')),
+          SnackBar(content: Text('Error loading mapped stores: $e')),
+        );
+      }
+    }
+  }
+
+
+  Future<void> _loadSubAreas(int areaId) async {
+    setState(() {
+      _subAreas = [];
+    });
+    try {
+      await Future.delayed(const Duration(seconds: 1));
+      
+      // For demo purposes, load sample sub areas
+      final sampleSubAreas = [
+        SubArea(id: 1, name: 'Jakarta Selatan', areaId: areaId),
+        SubArea(id: 2, name: 'Jakarta Utara', areaId: areaId),
+        SubArea(id: 3, name: 'Jakarta Timur', areaId: areaId),
+        SubArea(id: 4, name: 'Jakarta Barat', areaId: areaId),
+      ];
+      
+      setState(() {
+        _subAreas = sampleSubAreas;
+      });
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error loading sub areas: $e')),
         );
       }
     }
@@ -129,27 +149,9 @@ class _StoreMappingScreenState extends State<StoreMappingScreen>
     try {
       // Simulate loading visited stores - replace with actual API call
       await Future.delayed(const Duration(seconds: 1));
-      
-      // Show some visited stores based on the first few stores from each area
-      final visitedStores = <Store>[];
-      final areaGroups = <int, List<Store>>{};
-      
-      // Group stores by area
-      for (final store in _allStores) {
-        if (store.areaId != null) {
-          areaGroups.putIfAbsent(store.areaId!, () => []).add(store);
-        }
-      }
-      
-      // Take first store from each area as visited
-      for (final stores in areaGroups.values) {
-        if (stores.isNotEmpty) {
-          visitedStores.add(stores.first);
-        }
-      }
-      
       setState(() {
-        _visitedStores = visitedStores;
+        _visitedStores = _availableStores.where((store) => 
+          store.name.contains('Hari Hari') || store.name.contains('warkop')).toList();
         _isLoadingVisitedStores = false;
       });
     } catch (e) {
@@ -164,56 +166,57 @@ class _StoreMappingScreenState extends State<StoreMappingScreen>
     }
   }
 
-  Future<void> _loadAllStores() async {
+  Future<void> _loadAvailableStores(int subAreaId) async {
     setState(() {
       _isLoadingStores = true;
+      _availableStores = [];
     });
 
     try {
-      // For demo purposes, load sample data for all areas
+      // For demo purposes, load sample data
       await Future.delayed(const Duration(seconds: 1));
       
-      final allSampleStores = <Store>[];
-      
-      // Generate stores for each area
-      for (int i = 0; i < _areas.length; i++) {
-        final area = _areas[i];
-        final areaStores = [
-          Store(
-            id: 30929 + (i * 10),
-            name: '${area.name} Store ${i + 1}',
-            address: 'Jl. Raya ${area.name} No.${i + 1}, ${area.description}',
-            latitude: -6.2615 + (i * 0.001),
-            longitude: 106.8106 + (i * 0.001),
-            areaId: area.id,
-            areaName: area.name,
-          ),
-          Store(
-            id: 57078 + (i * 10),
-            name: '${area.name} Mini Market ${i + 1}',
-            address: 'Blok ${String.fromCharCode(65 + i)} No.${i + 1}, ${area.description}',
-            latitude: -6.2600 + (i * 0.001),
-            longitude: 106.8110 + (i * 0.001),
-            areaId: area.id,
-            areaName: area.name,
-          ),
-          Store(
-            id: 57079 + (i * 10),
-            name: '${area.name} Supermarket ${i + 1}',
-            address: 'Kompleks ${area.name} Blok ${String.fromCharCode(65 + i)} No.${i + 1}',
-            latitude: -6.2620 + (i * 0.001),
-            longitude: 106.8100 + (i * 0.001),
-            areaId: area.id,
-            areaName: area.name,
-          ),
-        ];
-        allSampleStores.addAll(areaStores);
-      }
+      final sampleStores = [
+        Store(
+          id: 30930,
+          name: 'Alfamart Ahmad Razak',
+          address: 'Jl. K.H. Ahmad Razak No.85, Takkalala, Kec. Wara Sel., Kota Palopo, Sulawesi Selatan',
+          latitude: -3.0076207,
+          longitude: 120.1890001,
+          areaId: _selectedArea?.id ?? 1,
+          areaName: _selectedArea?.name ?? 'Unknown',
+        ),
+        Store(
+          id: 38871,
+          name: 'ALFAMART AHMAD RAZAK PALOPO',
+          address: 'Jl. Ahmad Razak, Palopo, Sulawesi Selatan',
+          latitude: -3.0128025,
+          longitude: 120.2021205,
+          areaId: _selectedArea?.id ?? 1,
+          areaName: _selectedArea?.name ?? 'Unknown',
+        ),
+        Store(
+          id: 7075,
+          name: 'alfamart ahmad razak TDTK',
+          address: 'X6P2+VRH, Tompotika, Kec. Wara, Kota Palopo, Sulawesi Selatan',
+          latitude: -3.0128025,
+          longitude: 120.2021205,
+          areaId: _selectedArea?.id ?? 1,
+          areaName: _selectedArea?.name ?? 'Unknown',
+        ),
+        Store(
+          id: 39162,
+          name: 'ALFAMART AHMAD YANI MASAMBA',
+          address: 'Jl. Ahmad Yani, Masamba, Sulawesi Selatan',
+          latitude: -3.0100000,
+          longitude: 120.1900000,
+          areaId: _selectedArea?.id ?? 1,
+          areaName: _selectedArea?.name ?? 'Unknown',
+        ),
+      ];
       
       setState(() {
-        _allStores = allSampleStores;
-        _stores = allSampleStores;
-        _filteredStores = allSampleStores;
+        _availableStores = sampleStores;
         _isLoadingStores = false;
       });
     } catch (e) {
@@ -226,55 +229,6 @@ class _StoreMappingScreenState extends State<StoreMappingScreen>
         );
       }
     }
-  }
-
-  Future<void> _loadStoresForArea(int areaId) async {
-    setState(() {
-      _isLoadingStores = true;
-    });
-
-    try {
-      await Future.delayed(const Duration(seconds: 1));
-      
-      // Filter stores by area
-      final filteredStores = _allStores.where((store) => store.areaId == areaId).toList();
-      
-      setState(() {
-        _stores = filteredStores;
-        _filteredStores = filteredStores;
-        _isLoadingStores = false;
-      });
-    } catch (e) {
-      setState(() {
-        _isLoadingStores = false;
-      });
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error loading stores: $e')),
-        );
-      }
-    }
-  }
-
-  void _filterStores() {
-    List<Store> filtered = _stores;
-    
-    // Filter by search query
-    if (_searchQuery.isNotEmpty) {
-      filtered = filtered.where((store) => 
-        store.name.toLowerCase().contains(_searchQuery.toLowerCase()) ||
-        store.address.toLowerCase().contains(_searchQuery.toLowerCase())
-      ).toList();
-    }
-    
-    // Filter by selected area
-    if (_selectedArea != null) {
-      filtered = filtered.where((store) => store.areaId == _selectedArea!.id).toList();
-    }
-    
-    setState(() {
-      _filteredStores = filtered;
-    });
   }
 
 
@@ -308,42 +262,65 @@ class _StoreMappingScreenState extends State<StoreMappingScreen>
     }
   }
 
+  Future<void> _addStoresToMapping() async {
+    if (_selectedStoreIds.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Pilih minimal satu toko untuk ditambahkan'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    setState(() {
+      _isAddingStores = true;
+    });
+
+    try {
+      final storeIds = _selectedStoreIds.toList();
+      final success = await _storeMappingService.addStoresToEmployee(storeIds);
+      
+      if (success && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Toko berhasil ditambahkan ke mapping'),
+            backgroundColor: Colors.green,
+          ),
+        );
+        
+        // Reset selection and go back to main screen
+        _selectedStoreIds.clear();
+        _selectedArea = null;
+        _selectedSubArea = null;
+        _availableStores.clear();
+        _visitedStores.clear();
+        
+        // Reload mapped stores
+        _loadMappedStores();
+        
+        // Go back to main screen
+        Navigator.of(context).pop();
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error adding stores: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      setState(() {
+        _isAddingStores = false;
+      });
+    }
+  }
+
 
   @override
   Widget build(BuildContext context) {
-    if (_isInitialLoading) {
-      return Scaffold(
-        appBar: AppBar(
-          title: const Text(
-            'Store Mapping',
-            style: TextStyle(
-              fontWeight: FontWeight.bold,
-              color: Colors.white,
-            ),
-          ),
-          backgroundColor: const Color(0xFFD32F2F),
-          foregroundColor: Colors.white,
-          elevation: 0,
-        ),
-        body: const Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              CircularProgressIndicator(),
-              SizedBox(height: 16),
-              Text(
-                'Loading Store Data...',
-                style: TextStyle(
-                  fontSize: 16,
-                  color: Colors.grey,
-                ),
-              ),
-            ],
-          ),
-        ),
-      );
-    }
-
     return Scaffold(
       appBar: AppBar(
         title: const Text(
@@ -356,51 +333,11 @@ class _StoreMappingScreenState extends State<StoreMappingScreen>
         backgroundColor: const Color(0xFFD32F2F), // Red color like in mockup
         foregroundColor: Colors.white,
         elevation: 0,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.search),
-            onPressed: () {
-              _showSearchDialog();
-            },
-          ),
-        ],
       ),
-      body: Column(
-        children: [
-          // Tab Bar
-          Container(
-            color: Colors.white,
-            child: TabBar(
-              controller: _tabController,
-              indicatorColor: Colors.blue,
-              labelColor: Colors.blue,
-              unselectedLabelColor: Colors.grey,
-              tabs: [
-                Tab(
-                  text: 'STORE COVERAGE(${_filteredStores.length})',
-                ),
-                Tab(
-                  text: 'LAST VISIT(${_visitedStores.length})',
-                ),
-              ],
-            ),
-          ),
-          
-          // Tab Content
-          Expanded(
-            child: TabBarView(
-              controller: _tabController,
-              children: [
-                _buildStoreCoverageTab(),
-                _buildLastVisitTab(),
-              ],
-            ),
-          ),
-        ],
-      ),
+      body: _buildMainScreen(),
       floatingActionButton: FloatingActionButton(
         onPressed: () {
-          _showAreaSelectionDialog();
+          _showAddStoreScreen();
         },
         backgroundColor: Colors.blue,
         child: const Icon(Icons.add, color: Colors.white),
@@ -408,7 +345,7 @@ class _StoreMappingScreenState extends State<StoreMappingScreen>
     );
   }
 
-  Widget _buildStoreCoverageTab() {
+  Widget _buildMainScreen() {
     return Column(
       children: [
         // Header
@@ -419,26 +356,20 @@ class _StoreMappingScreenState extends State<StoreMappingScreen>
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(
-                'Jumlah Toko : ${_filteredStores.length}',
+                'Jumlah Toko : ${_mappedStores.length}',
                 style: const TextStyle(
                   fontWeight: FontWeight.bold,
                   fontSize: 16,
                 ),
               ),
-              if (_filteredStores.isNotEmpty)
+              if (_mappedStores.isNotEmpty)
                 GestureDetector(
                   onTap: () {
-                    // Reset filter to show all stores
-                    setState(() {
-                      _selectedArea = null;
-                      _searchQuery = '';
-                      _searchController.clear();
-                      _filteredStores = _allStores;
-                      _stores = _allStores;
-                    });
+                    // Refresh data
+                    _loadMappedStores();
                   },
                   child: const Text(
-                    'Lihat Semua',
+                    'Refresh',
                     style: TextStyle(
                       color: Colors.blue,
                       fontWeight: FontWeight.w500,
@@ -451,9 +382,9 @@ class _StoreMappingScreenState extends State<StoreMappingScreen>
         
         // Store List
         Expanded(
-          child: _isLoadingStores
-              ? const Center(child: CircularProgressIndicator())
-              : _filteredStores.isEmpty
+          child: _isLoadingMappedStores
+              ? _buildSkeletonLoading()
+              : _mappedStores.isEmpty
                   ? const Center(
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
@@ -465,10 +396,18 @@ class _StoreMappingScreenState extends State<StoreMappingScreen>
                           ),
                           SizedBox(height: 16),
                           Text(
-                            'Tidak ada toko yang tersedia',
+                            'Belum ada toko yang ditambahkan',
                             style: TextStyle(
                               color: Colors.grey,
                               fontSize: 16,
+                            ),
+                          ),
+                          SizedBox(height: 8),
+                          Text(
+                            'Tap tombol + untuk menambah toko',
+                            style: TextStyle(
+                              color: Colors.grey,
+                              fontSize: 14,
                             ),
                           ),
                         ],
@@ -476,10 +415,10 @@ class _StoreMappingScreenState extends State<StoreMappingScreen>
                     )
                   : ListView.builder(
                       padding: const EdgeInsets.all(16),
-                      itemCount: _filteredStores.length,
+                      itemCount: _mappedStores.length,
                       itemBuilder: (context, index) {
-                        final store = _filteredStores[index];
-                        return _buildStoreCard(store, index + 1);
+                        final store = _mappedStores[index];
+                        return _buildMappedStoreCard(store, index + 1);
                       },
                     ),
         ),
@@ -487,64 +426,85 @@ class _StoreMappingScreenState extends State<StoreMappingScreen>
     );
   }
 
-  Widget _buildLastVisitTab() {
-    return Column(
-      children: [
-        // Header
-        Container(
-          color: Colors.white,
-          padding: const EdgeInsets.all(16),
-          child: Text(
-            'Jumlah Toko : ${_visitedStores.length}',
-            style: const TextStyle(
-              fontWeight: FontWeight.bold,
-              fontSize: 16,
+  Widget _buildSkeletonLoading() {
+    return ListView.builder(
+      padding: const EdgeInsets.all(16),
+      itemCount: 5,
+      itemBuilder: (context, index) {
+        return Container(
+          margin: const EdgeInsets.only(bottom: 12),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(8),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.grey.withValues(alpha: 0.1),
+                spreadRadius: 1,
+                blurRadius: 4,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Row(
+              children: [
+                // Skeleton number
+                Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: Colors.grey[300],
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                // Skeleton content
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Container(
+                        height: 16,
+                        width: double.infinity,
+                        decoration: BoxDecoration(
+                          color: Colors.grey[300],
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Container(
+                        height: 14,
+                        width: 200,
+                        decoration: BoxDecoration(
+                          color: Colors.grey[300],
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Container(
+                        height: 14,
+                        width: 150,
+                        decoration: BoxDecoration(
+                          color: Colors.grey[300],
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ),
           ),
-        ),
-        
-        // Visited Store List
-        Expanded(
-          child: _isLoadingVisitedStores
-              ? const Center(child: CircularProgressIndicator())
-              : _visitedStores.isEmpty
-                  ? const Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(
-                            Icons.visibility_off_outlined,
-                            size: 64,
-                            color: Colors.grey,
-                          ),
-                          SizedBox(height: 16),
-                          Text(
-                            'Belum ada toko yang dikunjungi',
-                            style: TextStyle(
-                              color: Colors.grey,
-                              fontSize: 16,
-                            ),
-                          ),
-                        ],
-                      ),
-                    )
-                  : ListView.builder(
-                      padding: const EdgeInsets.all(16),
-                      itemCount: _visitedStores.length,
-                      itemBuilder: (context, index) {
-                        final store = _visitedStores[index];
-                        return _buildStoreCard(store, index + 1, isVisited: true);
-                      },
-                    ),
-        ),
-      ],
+        );
+      },
     );
   }
 
-  Widget _buildStoreCard(Store store, int index, {bool isVisited = false}) {
+  Widget _buildMappedStoreCard(Store store, int index) {
     return GestureDetector(
       onTap: () {
-        _showLocationUpdateDialog(store);
+        _navigateToStoreLocation(store);
       },
       child: Container(
         margin: const EdgeInsets.only(bottom: 12),
@@ -560,184 +520,620 @@ class _StoreMappingScreenState extends State<StoreMappingScreen>
             ),
           ],
         ),
-        child: Stack(
-          children: [
-            Padding(
-              padding: const EdgeInsets.all(16),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Number
-                  Container(
-                    width: 40,
-                    height: 40,
-                    decoration: BoxDecoration(
-                      color: Colors.grey[200],
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                    child: Center(
-                      child: Text(
-                        '$index',
-                        style: const TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 16,
-                        ),
-                      ),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Number
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: Colors.grey[200],
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Center(
+                  child: Text(
+                    '$index',
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
                     ),
                   ),
-                  
-                  const SizedBox(width: 12),
-                  
-                  // Store Info
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                ),
+              ),
+              
+              const SizedBox(width: 12),
+              
+              // Store Info
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Store Name
+                    Text(
+                      store.name,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16,
+                      ),
+                    ),
+                    
+                    const SizedBox(height: 4),
+                    
+                    // Store ID and Type
+                    Text(
+                      '${store.id} - ${store.areaName ?? 'Unknown'} - ${store.name.split(' ').first.toUpperCase()}',
+                      style: TextStyle(
+                        color: Colors.grey[600],
+                        fontSize: 14,
+                      ),
+                    ),
+                    
+                    const SizedBox(height: 8),
+                    
+                    // Address
+                    Row(
                       children: [
-                        // Store Name
-                        Text(
-                          store.name,
-                          style: const TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 16,
+                        Icon(
+                          Icons.location_on_outlined,
+                          size: 16,
+                          color: Colors.grey[600],
+                        ),
+                        const SizedBox(width: 4),
+                        Expanded(
+                          child: Text(
+                            store.address,
+                            style: TextStyle(
+                              color: Colors.grey[600],
+                              fontSize: 14,
+                            ),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
                           ),
                         ),
-                        
-                        const SizedBox(height: 4),
-                        
-                        // Store ID and Type
+                      ],
+                    ),
+                    
+                    const SizedBox(height: 4),
+                    
+                    // Distance
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.directions_car_outlined,
+                          size: 16,
+                          color: Colors.grey[600],
+                        ),
+                        const SizedBox(width: 4),
                         Text(
-                          '${store.id} - ${store.areaName ?? 'Unknown'} - ${store.name.split(' ').first.toUpperCase()}',
+                          'Jarak : ${_calculateDistance(store)}',
                           style: TextStyle(
                             color: Colors.grey[600],
                             fontSize: 14,
                           ),
                         ),
-                        
-                        const SizedBox(height: 8),
-                        
-                        // Address
-                        Row(
-                          children: [
-                            Icon(
-                              Icons.location_on_outlined,
-                              size: 16,
-                              color: Colors.grey[600],
+                      ],
+                    ),
+                    
+                    const SizedBox(height: 8),
+                    
+                    // Tap to view indicator
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: Colors.blue.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: Colors.blue.withValues(alpha: 0.3)),
+                      ),
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.touch_app,
+                            size: 16,
+                            color: Colors.blue,
+                          ),
+                          SizedBox(width: 4),
+                          Text(
+                            'Tap to View Location',
+                            style: TextStyle(
+                              color: Colors.blue,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w500,
                             ),
-                            const SizedBox(width: 4),
-                            Expanded(
-                              child: Text(
-                                store.address,
-                                style: TextStyle(
-                                  color: Colors.grey[600],
-                                  fontSize: 14,
-                                ),
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                          ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _showAddStoreScreen() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setModalState) => Container(
+          height: MediaQuery.of(context).size.height * 0.9,
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+          ),
+          child: Column(
+            children: [
+              // Handle
+              Container(
+                width: 40,
+                height: 4,
+                margin: const EdgeInsets.only(top: 12, bottom: 20),
+                decoration: BoxDecoration(
+                  color: Colors.grey[300],
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              
+              // Title
+              const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 20),
+                child: Text(
+                  'Tambah Toko ke Mapping',
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+              
+              const SizedBox(height: 16),
+              
+              // Filter Section
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: Column(
+                  children: [
+                    // Area Selection
+                    DropdownButtonFormField<Area>(
+                      initialValue: _selectedArea,
+                      decoration: const InputDecoration(
+                        labelText: 'Pilih Area',
+                        border: OutlineInputBorder(),
+                      ),
+                      items: _areas.map((area) {
+                        return DropdownMenuItem<Area>(
+                          value: area,
+                          child: Text(area.name),
+                        );
+                      }).toList(),
+                      onChanged: (Area? area) {
+                        setState(() {
+                          _selectedArea = area;
+                          _selectedSubArea = null;
+                          _subAreas.clear();
+                        });
+                        if (area != null) {
+                          _loadSubAreas(area.id);
+                        }
+                      },
+                    ),
+                    
+                    const SizedBox(height: 16),
+                    
+                    // Sub Area Selection
+                    DropdownButtonFormField<SubArea>(
+                      initialValue: _selectedSubArea,
+                      decoration: const InputDecoration(
+                        labelText: 'Pilih Sub Area',
+                        border: OutlineInputBorder(),
+                      ),
+                      items: _subAreas.map((subArea) {
+                        return DropdownMenuItem<SubArea>(
+                          value: subArea,
+                          child: Text(subArea.name),
+                        );
+                      }).toList(),
+                      onChanged: _selectedArea != null ? (SubArea? subArea) {
+                        setState(() {
+                          _selectedSubArea = subArea;
+                        });
+                        if (subArea != null) {
+                          _loadAvailableStores(subArea.id);
+                        }
+                      } : null,
+                    ),
+                  ],
+                ),
+              ),
+              
+              const SizedBox(height: 16),
+              
+              // Store Selection Tabs
+              if (_availableStores.isNotEmpty) ...[
+                Container(
+                  color: Colors.white,
+                  child: TabBar(
+                    controller: _tabController,
+                    indicatorColor: Colors.blue,
+                    labelColor: Colors.blue,
+                    unselectedLabelColor: Colors.grey,
+                    tabs: [
+                      Tab(
+                        text: 'STORE COVERAGE(${_availableStores.length})',
+                      ),
+                      Tab(
+                        text: 'LAST VISIT(${_visitedStores.length})',
+                      ),
+                    ],
+                  ),
+                ),
+                
+                // Tab Content
+                Expanded(
+                  child: TabBarView(
+                    controller: _tabController,
+                    children: [
+                      _buildStoreSelectionTab(),
+                      _buildLastVisitSelectionTab(),
+                    ],
+                  ),
+                ),
+                
+                // Add Button
+                if (_selectedStoreIds.isNotEmpty)
+                  Container(
+                    padding: const EdgeInsets.all(20),
+                    child: SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton(
+                        onPressed: _isAddingStores ? null : _addStoresToMapping,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.blue,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 16),
                         ),
-                        
-                        const SizedBox(height: 4),
-                        
-                        // Distance
-                        Row(
-                          children: [
-                            Icon(
-                              Icons.directions_car_outlined,
-                              size: 16,
-                              color: Colors.grey[600],
-                            ),
-                            const SizedBox(width: 4),
-                            Text(
-                              'Jarak : ${_calculateDistance(store)}',
-                              style: TextStyle(
-                                color: Colors.grey[600],
-                                fontSize: 14,
-                              ),
-                            ),
-                          ],
-                        ),
-                        
-                        const SizedBox(height: 8),
-                        
-                        // Document Icon
+                        child: _isAddingStores
+                            ? const Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  SizedBox(
+                                    width: 20,
+                                    height: 20,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: Colors.white,
+                                    ),
+                                  ),
+                                  SizedBox(width: 12),
+                                  Text('Menambahkan...'),
+                                ],
+                              )
+                            : Text('Tambah ${_selectedStoreIds.length} Toko'),
+                      ),
+                    ),
+                  ),
+              ] else if (_selectedArea != null && _selectedSubArea != null && _isLoadingStores) ...[
+                const Expanded(
+                  child: Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        CircularProgressIndicator(),
+                        SizedBox(height: 16),
+                        Text('Memuat toko...'),
+                      ],
+                    ),
+                  ),
+                ),
+              ] else ...[
+                const Expanded(
+                  child: Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
                         Icon(
-                          Icons.description_outlined,
-                          size: 16,
-                          color: Colors.grey[400],
+                          Icons.store_outlined,
+                          size: 64,
+                          color: Colors.grey,
+                        ),
+                        SizedBox(height: 16),
+                        Text(
+                          'Pilih area dan sub area untuk melihat toko',
+                          style: TextStyle(
+                            color: Colors.grey,
+                            fontSize: 16,
+                          ),
                         ),
                       ],
                     ),
                   ),
-                  
-                  // Tap to update indicator
-                  Column(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                        decoration: BoxDecoration(
-                          color: Colors.blue.withValues(alpha: 0.1),
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: Colors.blue.withValues(alpha: 0.3)),
-                        ),
-                        child: const Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(
-                              Icons.touch_app,
-                              size: 16,
-                              color: Colors.blue,
-                            ),
-                            SizedBox(width: 4),
-                            Text(
-                              'Tap to Update',
-                              style: TextStyle(
-                                color: Colors.blue,
-                                fontSize: 12,
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-            
-            // Visited Tag
-            if (isVisited)
-              Positioned(
-                top: 0,
-                right: 0,
-                child: Container(
-                  width: 60,
-                  height: 60,
-                  decoration: const BoxDecoration(
-                    color: Colors.blue,
-                    borderRadius: BorderRadius.only(
-                      topRight: Radius.circular(8),
-                      bottomLeft: Radius.circular(20),
-                    ),
-                  ),
-                  child: const Center(
-                    child: Text(
-                      'VISITED',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 10,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
                 ),
-              ),
-          ],
+              ],
+            ],
+          ),
         ),
       ),
     );
+  }
+
+  Widget _buildStoreSelectionTab() {
+    return ListView.builder(
+      padding: const EdgeInsets.all(16),
+      itemCount: _availableStores.length,
+      itemBuilder: (context, index) {
+        final store = _availableStores[index];
+        final isSelected = _selectedStoreIds.contains(store.id);
+        
+        return Container(
+          margin: const EdgeInsets.only(bottom: 12),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(
+              color: isSelected ? Colors.blue : Colors.grey.withValues(alpha: 0.3),
+              width: isSelected ? 2 : 1,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.grey.withValues(alpha: 0.1),
+                spreadRadius: 1,
+                blurRadius: 4,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: CheckboxListTile(
+            title: Text(
+              store.name,
+              style: const TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: 16,
+              ),
+            ),
+            subtitle: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '${store.id} - ${store.areaName ?? 'Unknown'}',
+                  style: TextStyle(
+                    color: Colors.grey[600],
+                    fontSize: 14,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  store.address,
+                  style: TextStyle(
+                    color: Colors.grey[600],
+                    fontSize: 14,
+                  ),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
+            value: isSelected,
+            onChanged: (bool? value) {
+              setState(() {
+                if (value == true) {
+                  _selectedStoreIds.add(store.id);
+                } else {
+                  _selectedStoreIds.remove(store.id);
+                }
+              });
+            },
+            activeColor: Colors.blue,
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildLastVisitSelectionTab() {
+    return _isLoadingVisitedStores
+        ? const Center(child: CircularProgressIndicator())
+        : _visitedStores.isEmpty
+            ? const Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      Icons.visibility_off_outlined,
+                      size: 64,
+                      color: Colors.grey,
+                    ),
+                    SizedBox(height: 16),
+                    Text(
+                      'Belum ada toko yang dikunjungi',
+                      style: TextStyle(
+                        color: Colors.grey,
+                        fontSize: 16,
+                      ),
+                    ),
+                  ],
+                ),
+              )
+            : ListView.builder(
+                padding: const EdgeInsets.all(16),
+                itemCount: _visitedStores.length,
+                itemBuilder: (context, index) {
+                  final store = _visitedStores[index];
+                  final isSelected = _selectedStoreIds.contains(store.id);
+                  
+                  return Container(
+                    margin: const EdgeInsets.only(bottom: 12),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: isSelected ? Colors.blue : Colors.grey.withValues(alpha: 0.3),
+                        width: isSelected ? 2 : 1,
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.grey.withValues(alpha: 0.1),
+                          spreadRadius: 1,
+                          blurRadius: 4,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    child: CheckboxListTile(
+                      title: Text(
+                        store.name,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                        ),
+                      ),
+                      subtitle: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            '${store.id} - ${store.areaName ?? 'Unknown'}',
+                            style: TextStyle(
+                              color: Colors.grey[600],
+                              fontSize: 14,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            store.address,
+                            style: TextStyle(
+                              color: Colors.grey[600],
+                              fontSize: 14,
+                            ),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                      ),
+                      value: isSelected,
+                      onChanged: (bool? value) {
+                        setState(() {
+                          if (value == true) {
+                            _selectedStoreIds.add(store.id);
+                          } else {
+                            _selectedStoreIds.remove(store.id);
+                          }
+                        });
+                      },
+                      activeColor: Colors.blue,
+                      secondary: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: Colors.green,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: const Text(
+                          'VISITED',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 10,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              );
+  }
+
+  void _navigateToStoreLocation(Store store) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => StoreLocationScreen(store: store),
+      ),
+    );
+  }
+
+
+  String _calculateDistance(Store store) {
+    if (_currentPosition == null || store.latitude == null || store.longitude == null) {
+      return '0,00 KM';
+    }
+    
+    final distance = Geolocator.distanceBetween(
+      _currentPosition!.latitude,
+      _currentPosition!.longitude,
+      store.latitude!,
+      store.longitude!,
+    );
+    
+    return '${(distance / 1000).toStringAsFixed(2).replaceAll('.', ',')} KM';
+  }
+
+
+}
+
+// Store Location Screen with Google Maps and Update Form
+class StoreLocationScreen extends StatefulWidget {
+  final Store store;
+
+  const StoreLocationScreen({super.key, required this.store});
+
+  @override
+  State<StoreLocationScreen> createState() => _StoreLocationScreenState();
+}
+
+class _StoreLocationScreenState extends State<StoreLocationScreen> {
+  final StoreMappingService _storeMappingService = StoreMappingService();
+  final ImagePicker _imagePicker = ImagePicker();
+  final TextEditingController _reasonController = TextEditingController();
+  
+  Position? _currentPosition;
+  File? _selectedImage;
+  bool _isUpdatingLocation = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _getCurrentLocation();
+  }
+
+  @override
+  void dispose() {
+    _reasonController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _getCurrentLocation() async {
+    try {
+      final permission = await Permission.location.request();
+      if (permission != PermissionStatus.granted) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Location permission denied')),
+          );
+        }
+        return;
+      }
+
+      final position = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.high,
+        ),
+      );
+      
+      setState(() {
+        _currentPosition = position;
+      });
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error getting location: $e')),
+        );
+      }
+    }
   }
 
   String _calculateDistance(Store store) {
@@ -755,247 +1151,156 @@ class _StoreMappingScreenState extends State<StoreMappingScreen>
     return '${(distance / 1000).toStringAsFixed(2).replaceAll('.', ',')} KM';
   }
 
-  void _showSearchDialog() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Cari & Filter Toko'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: _searchController,
-              decoration: const InputDecoration(
-                hintText: 'Masukkan nama toko...',
-                prefixIcon: Icon(Icons.search),
-                border: OutlineInputBorder(),
-              ),
-              onChanged: (value) {
-                setState(() {
-                  _searchQuery = value;
-                });
-              },
-            ),
-            const SizedBox(height: 16),
-            const Text(
-              'Filter Area',
-              style: TextStyle(
-                fontWeight: FontWeight.bold,
-                fontSize: 16,
-              ),
-            ),
-            const SizedBox(height: 8),
-            DropdownButtonFormField<Area>(
-              initialValue: _selectedArea,
-              decoration: const InputDecoration(
-                labelText: 'Pilih Area',
-                border: OutlineInputBorder(),
-              ),
-              items: [
-                const DropdownMenuItem<Area>(
-                  value: null,
-                  child: Text('Semua Area'),
-                ),
-                ..._areas.map((area) {
-                  return DropdownMenuItem<Area>(
-                    value: area,
-                    child: Text(area.name),
-                  );
-                }),
-              ],
-              onChanged: (Area? area) {
-                setState(() {
-                  _selectedArea = area;
-                });
-              },
-            ),
-          ],
+  Future<void> _pickImage() async {
+    try {
+      final XFile? image = await _imagePicker.pickImage(
+        source: ImageSource.camera,
+        maxWidth: 1024,
+        maxHeight: 1024,
+        imageQuality: 80,
+      );
+      
+      if (image != null) {
+        setState(() {
+          _selectedImage = File(image.path);
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error picking image: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _updateStoreLocation() async {
+    if (_reasonController.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Mohon untuk mengisi alasan terlebih dahulu!'),
+          backgroundColor: Colors.red,
         ),
-        actions: [
-          TextButton(
-            onPressed: () {
-              setState(() {
-                _selectedArea = null;
-                _searchQuery = '';
-                _searchController.clear();
-                _filteredStores = _allStores;
-                _stores = _allStores;
-              });
-              Navigator.of(context).pop();
-            },
-            child: const Text('Reset'),
+      );
+      return;
+    }
+
+    if (_currentPosition == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Lokasi tidak tersedia. Pastikan GPS aktif.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    setState(() {
+      _isUpdatingLocation = true;
+    });
+
+    try {
+      final locationUpdate = StoreLocationUpdate(
+        storeId: widget.store.id,
+        latitude: _currentPosition!.latitude,
+        longitude: _currentPosition!.longitude,
+        notes: _reasonController.text.trim(),
+      );
+
+      final success = await _storeMappingService.updateStoreLocation(locationUpdate);
+      
+      if (success && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Berhasil request update lokasi toko'),
+            backgroundColor: Colors.green,
           ),
-          ElevatedButton(
-            onPressed: () {
-              _filterStores();
-              Navigator.of(context).pop();
-            },
-            child: const Text('Filter'),
+        );
+        
+        _reasonController.clear();
+        setState(() {
+          _selectedImage = null;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error updating store location: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      setState(() {
+        _isUpdatingLocation = false;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text(
+          'Update Lokasi Toko',
+          style: TextStyle(
+            fontWeight: FontWeight.bold,
+            color: Colors.white,
+          ),
+        ),
+        backgroundColor: const Color(0xFFD32F2F),
+        foregroundColor: Colors.white,
+        elevation: 0,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.my_location),
+            onPressed: _getCurrentLocation,
+            tooltip: 'Refresh location',
           ),
         ],
       ),
-    );
-  }
-
-  void _showAreaSelectionDialog() {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) => Container(
-        height: MediaQuery.of(context).size.height * 0.8,
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-        ),
+      body: SingleChildScrollView(
         child: Column(
           children: [
-            // Handle
+            // Store Info
             Container(
-              width: 40,
-              height: 4,
-              margin: const EdgeInsets.only(top: 12, bottom: 20),
-              decoration: BoxDecoration(
-                color: Colors.grey[300],
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-            
-            // Title
-            const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 20),
-              child: Text(
-                'Pilih Area',
-                style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ),
-            
-            const SizedBox(height: 16),
-            
-            // Search Field
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              child: TextField(
-                decoration: const InputDecoration(
-                  hintText: 'Cari area...',
-                  prefixIcon: Icon(Icons.search),
-                  border: OutlineInputBorder(),
-                ),
-              ),
-            ),
-            
-            const SizedBox(height: 16),
-            
-            // Area List
-            Expanded(
-              child: _isLoadingAreas
-                  ? const Center(child: CircularProgressIndicator())
-                  : ListView.builder(
-                      padding: const EdgeInsets.symmetric(horizontal: 20),
-                      itemCount: _areas.length,
-                      itemBuilder: (context, index) {
-                        final area = _areas[index];
-                        return ListTile(
-                          leading: Container(
-                            width: 40,
-                            height: 40,
-                            decoration: BoxDecoration(
-                              color: Colors.blue.withValues(alpha: 0.1),
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: Center(
-                              child: Text(
-                                '${index + 1}',
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.blue,
-                                ),
-                              ),
-                            ),
-                          ),
-                          title: Text(
-                            area.name,
-                            style: const TextStyle(
-                              fontWeight: FontWeight.w600,
-                              color: Colors.blue,
-                            ),
-                          ),
-                          subtitle: Text(
-                            area.description ?? '',
-                            style: TextStyle(
-                              color: Colors.grey[600],
-                            ),
-                          ),
-                          onTap: () {
-                            Navigator.of(context).pop();
-                            setState(() {
-                              _selectedArea = area;
-                            });
-                            _loadStoresForArea(area.id);
-                          },
-                        );
-                      },
-                    ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  void _showLocationUpdateDialog(Store store) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) => Container(
-        height: MediaQuery.of(context).size.height * 0.9,
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-        ),
-        child: Column(
-          children: [
-            // Handle
-            Container(
-              width: 40,
-              height: 4,
-              margin: const EdgeInsets.only(top: 12, bottom: 20),
-              decoration: BoxDecoration(
-                color: Colors.grey[300],
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-            
-            // Header
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              child: Row(
+              width: double.infinity,
+              color: Colors.white,
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Icon(Icons.location_on, color: Colors.red, size: 24),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          'Update Lokasi Toko',
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        Text(
-                          store.name,
-                          style: TextStyle(
-                            color: Colors.grey[600],
-                            fontSize: 14,
-                          ),
-                        ),
-                      ],
+                  Text(
+                    widget.store.name,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 18,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    '${widget.store.id} - ${widget.store.areaName ?? 'Unknown'}',
+                    style: TextStyle(
+                      color: Colors.grey[600],
+                      fontSize: 14,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    widget.store.address,
+                    style: TextStyle(
+                      color: Colors.grey[600],
+                      fontSize: 14,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Jarak: ${_calculateDistance(widget.store)}',
+                    style: TextStyle(
+                      color: Colors.grey[600],
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
                     ),
                   ),
                 ],
@@ -1004,10 +1309,10 @@ class _StoreMappingScreenState extends State<StoreMappingScreen>
             
             const SizedBox(height: 16),
             
-            // Google Maps Section
+            // Google Maps
             Container(
-              height: 250,
-              margin: const EdgeInsets.symmetric(horizontal: 20),
+              height: 300,
+              margin: const EdgeInsets.symmetric(horizontal: 16),
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(color: Colors.grey[300]!),
@@ -1025,21 +1330,21 @@ class _StoreMappingScreenState extends State<StoreMappingScreen>
                         },
                         markers: {
                           Marker(
-                            markerId: MarkerId('current_location'),
+                            markerId: const MarkerId('current_location'),
                             position: LatLng(_currentPosition!.latitude, _currentPosition!.longitude),
                             icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue),
                             infoWindow: const InfoWindow(
                               title: 'Lokasi Anda',
                             ),
                           ),
-                          if (store.latitude != null && store.longitude != null)
+                          if (widget.store.latitude != null && widget.store.longitude != null)
                             Marker(
-                              markerId: MarkerId('store_location'),
-                              position: LatLng(store.latitude!, store.longitude!),
+                              markerId: const MarkerId('store_location'),
+                              position: LatLng(widget.store.latitude!, widget.store.longitude!),
                               icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed),
                               infoWindow: InfoWindow(
-                                title: store.name,
-                                snippet: store.address,
+                                title: widget.store.name,
+                                snippet: widget.store.address,
                               ),
                             ),
                         },
@@ -1069,9 +1374,22 @@ class _StoreMappingScreenState extends State<StoreMappingScreen>
             
             const SizedBox(height: 16),
             
-            // Location Info
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
+            // Update Form
+            Container(
+              margin: const EdgeInsets.symmetric(horizontal: 16),
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(12),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.grey.withValues(alpha: 0.1),
+                    spreadRadius: 1,
+                    blurRadius: 4,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -1135,7 +1453,7 @@ class _StoreMappingScreenState extends State<StoreMappingScreen>
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          'Jarak ke toko: ${_calculateDistance(store)}',
+                          'Jarak ke toko: ${_calculateDistance(widget.store)}',
                           style: TextStyle(
                             color: Colors.grey[600],
                             fontSize: 12,
@@ -1209,171 +1527,46 @@ class _StoreMappingScreenState extends State<StoreMappingScreen>
                     ),
                     maxLines: 2,
                   ),
-                ],
-              ),
-            ),
-            
-            const Spacer(),
-            
-            // Action Buttons
-            Padding(
-              padding: const EdgeInsets.all(20),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: TextButton(
-                      onPressed: () {
-                        Navigator.of(context).pop();
-                        _reasonController.clear();
-                        setState(() {
-                          _selectedImage = null;
-                        });
-                      },
-                      style: TextButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                      ),
-                      child: const Text('Batal'),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    flex: 2,
+                  
+                  const SizedBox(height: 20),
+                  
+                  // Update Button
+                  SizedBox(
+                    width: double.infinity,
                     child: ElevatedButton(
-                      onPressed: () => _updateStoreLocationWithDialog(store),
+                      onPressed: _isUpdatingLocation ? null : _updateStoreLocation,
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.red,
                         foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        padding: const EdgeInsets.symmetric(vertical: 16),
                       ),
-                      child: const Text('Update Lokasi'),
+                      child: _isUpdatingLocation
+                          ? const Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                                SizedBox(width: 12),
+                                Text('Updating...'),
+                              ],
+                            )
+                          : const Text('Update Lokasi'),
                     ),
                   ),
                 ],
               ),
             ),
+            
+            const SizedBox(height: 20),
           ],
         ),
       ),
     );
-  }
-
-  Future<void> _pickImage() async {
-    try {
-      final XFile? image = await _imagePicker.pickImage(
-        source: ImageSource.camera,
-        maxWidth: 1024,
-        maxHeight: 1024,
-        imageQuality: 80,
-      );
-      
-      if (image != null) {
-        setState(() {
-          _selectedImage = File(image.path);
-        });
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error picking image: $e')),
-        );
-      }
-    }
-  }
-
-  Future<void> _updateStoreLocationWithDialog(Store store) async {
-    if (_reasonController.text.trim().isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Mohon untuk mengisi alasan terlebih dahulu!'),
-          backgroundColor: Colors.red,
-        ),
-      );
-      return;
-    }
-
-    if (_currentPosition == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Lokasi tidak tersedia. Pastikan GPS aktif.'),
-          backgroundColor: Colors.red,
-        ),
-      );
-      return;
-    }
-
-    // Start updating process
-
-    try {
-      final locationUpdate = StoreLocationUpdate(
-        storeId: store.id,
-        latitude: _currentPosition!.latitude,
-        longitude: _currentPosition!.longitude,
-        notes: _reasonController.text.trim(),
-      );
-
-      final success = await _storeMappingService.updateStoreLocation(locationUpdate);
-      
-      if (success && mounted) {
-        Navigator.of(context).pop(); // Close bottom sheet
-        _reasonController.clear();
-        setState(() {
-          _selectedImage = null;
-        });
-        
-        // Show success dialog
-        showDialog(
-          context: context,
-          builder: (context) => AlertDialog(
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Icon(
-                  Icons.check_circle,
-                  color: Colors.green,
-                  size: 64,
-                ),
-                const SizedBox(height: 16),
-                const Text(
-                  'Pesan',
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 18,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                const Text(
-                  'Berhasil request update lokasi toko, anda belum bisa check in jika lokasi belum disetujui oleh admin.',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 14),
-                ),
-                const SizedBox(height: 16),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    onPressed: () => Navigator.of(context).pop(),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.green,
-                      foregroundColor: Colors.white,
-                    ),
-                    child: const Text('OK'),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error updating store location: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    } finally {
-      // Update completed
-    }
   }
 }
