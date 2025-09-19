@@ -13,6 +13,7 @@ import 'package:stockira/screens/itinerary/index.dart';
 import 'package:stockira/screens/reports/index.dart';
 import 'package:stockira/screens/Availability/index.dart';
 import 'package:stockira/screens/store_mapping/index.dart';
+import 'package:stockira/screens/create_location/index.dart';
 import 'package:stockira/screens/auth/index.dart';
 import 'package:stockira/screens/url_setting/index.dart';
 import 'package:stockira/services/attendance_service.dart';
@@ -24,6 +25,7 @@ import 'package:stockira/models/attendance_record.dart';
 import 'package:stockira/models/itinerary.dart';
 import 'package:stockira/widgets/unified_timeline_widget.dart';
 import 'package:stockira/widgets/realtime_timer_widget.dart';
+import 'package:stockira/widgets/report_loading_indicator.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../services/settings_service.dart';
@@ -524,6 +526,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
   // Check-in/check-out state
   bool isCheckedIn = false;
   AttendanceRecord? todayRecord;
+  
+  // Report submission state
+  bool _isReportSubmitting = false;
+  String _reportSubmissionMessage = '';
 
   // Filter states
   DateTime? filterStartDate;
@@ -721,12 +727,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
     setState(() {});
   }
 
-  // Calculate active itinerary count (all stores from itinerary API)
-  int _calculateActiveItineraryCount(List<dynamic> stores) {
-    // Simply return the total number of stores from itinerary API
-    // No need to match with attendance data for itinerary count
-    final totalStores = stores.length;
-    print('📊 Total itineraries from API: $totalStores stores');
+  // Calculate total store count from all itineraries
+  int _calculateTotalStoreCount(List<Itinerary> itineraries) {
+    int totalStores = 0;
+    for (var itinerary in itineraries) {
+      totalStores += itinerary.stores.length;
+    }
+    print('📊 Total stores from all itineraries: $totalStores stores');
+    print('📊 Total itineraries: ${itineraries.length}');
     return totalStores;
   }
 
@@ -743,14 +751,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
       print('=== ITINERARY DEBUG ===');
       print('API Response Success: ${response.success}');
       print('API Response Message: ${response.message}');
-      print('API Response Data Length: ${response.data[0].stores.length}');
-      print('API Response Data: ${response.data}');
+      print('API Response Data Length: ${response.data.length} itineraries');
+      for (int i = 0; i < response.data.length; i++) {
+        print('Itinerary $i (ID: ${response.data[i].id}): ${response.data[i].stores.length} stores');
+        for (int j = 0; j < response.data[i].stores.length; j++) {
+          print('  Store $j: ${response.data[i].stores[j].name} (ID: ${response.data[i].stores[j].id})');
+        }
+      }
       print('=======================');
 
       setState(() {
         itineraryList = response.data;
-        // Calculate active itinerary count (not yet checked out)
-        itineraryCount = _calculateActiveItineraryCount(response.data[0].stores);
+        // Calculate total store count from all itineraries
+        itineraryCount = _calculateTotalStoreCount(response.data);
         itineraryDate = DateTime.now();
         isLoadingItinerary = false;
       });
@@ -1983,34 +1996,35 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                     print(
                                       '🔄 Report submitted, refreshing todo completion status...',
                                     );
+                                    _showReportSubmissionLoading('Report submitted successfully!');
                                     setState(() {});
                                   }
                                 },
                               ),
-                              _buildFeatureIcon(
-                                context: context,
-                                icon: Icons.receipt_long,
-                                label: translate('payslip'),
-                                color: Colors.blue,
-                                onTap: () {
-                                  Navigator.of(context).pop();
-                                  setState(() {
-                                    _selectedIndex = 1;
-                                  });
-                                },
-                              ),
-                              _buildFeatureIcon(
-                                context: context,
-                                icon: Icons.list_alt,
-                                label: translate('activity'),
-                                color: Colors.teal,
-                                onTap: () {
-                                  Navigator.of(context).pop();
-                                  setState(() {
-                                    _selectedIndex = 2;
-                                  });
-                                },
-                              ),
+                              // _buildFeatureIcon(
+                              //   context: context,
+                              //   icon: Icons.receipt_long,
+                              //   label: translate('payslip'),
+                              //   color: Colors.blue,
+                              //   onTap: () {
+                              //     Navigator.of(context).pop();
+                              //     setState(() {
+                              //       _selectedIndex = 1;
+                              //     });
+                              //   },
+                              // ),
+                              // _buildFeatureIcon(
+                              //   context: context,
+                              //   icon: Icons.list_alt,
+                              //   label: translate('activity'),
+                              //   color: Colors.teal,
+                              //   onTap: () {
+                              //     Navigator.of(context).pop();
+                              //     setState(() {
+                              //       _selectedIndex = 2;
+                              //     });
+                              //   },
+                              // ),
                               _buildFeatureIcon(
                                 context: context,
                                 icon: Icons.storefront,
@@ -2035,6 +2049,20 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                   Navigator.of(context).push(
                                     MaterialPageRoute(
                                       builder: (_) => const StoreMappingScreen(),
+                                    ),
+                                  );
+                                },
+                              ),
+                              _buildFeatureIcon(
+                                context: context,
+                                icon: Icons.add_location,
+                                label: 'Create Location',
+                                color: Colors.red[500]!,
+                                onTap: () {
+                                  Navigator.of(context).pop();
+                                  Navigator.of(context).push(
+                                    MaterialPageRoute(
+                                      builder: (_) => const CreateLocationScreen(),
                                     ),
                                   );
                                 },
@@ -2114,7 +2142,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
       '🔧 Build called - isCheckedIn: $isCheckedIn, store: ${todayRecord?.storeName}',
     );
     return Scaffold(
-      body: _screens[_selectedIndex],
+      body: Stack(
+        children: [
+          _screens[_selectedIndex],
+          // Report submission loading overlay
+          if (_isReportSubmitting)
+            ReportSubmissionOverlay(
+              message: _reportSubmissionMessage,
+              isVisible: _isReportSubmitting,
+              onCancel: _hideReportSubmissionLoading,
+              color: Colors.green,
+            ),
+        ],
+      ),
       bottomNavigationBar: CustomBottomNavigation(
         currentIndex: _selectedIndex,
         onTap: (index) {
@@ -2133,6 +2173,30 @@ class _DashboardScreenState extends State<DashboardScreen> {
         },
       ),
     );
+  }
+
+  void _showReportSubmissionLoading(String message) {
+    setState(() {
+      _isReportSubmitting = true;
+      _reportSubmissionMessage = message;
+    });
+
+    // Hide loading after 3 seconds
+    Future.delayed(const Duration(seconds: 3), () {
+      if (mounted) {
+        setState(() {
+          _isReportSubmitting = false;
+          _reportSubmissionMessage = '';
+        });
+      }
+    });
+  }
+
+  void _hideReportSubmissionLoading() {
+    setState(() {
+      _isReportSubmitting = false;
+      _reportSubmissionMessage = '';
+    });
   }
 }
 
@@ -2864,6 +2928,8 @@ class DashboardHome extends StatelessWidget {
     return '$hour:$minute $period';
   }
 
+
+
   Widget _buildRecentActivities(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -2873,8 +2939,12 @@ class DashboardHome extends StatelessWidget {
           style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
         ),
         const SizedBox(height: 12),
-        // Use unified timeline widget
-        UnifiedTimelineWidget(attendanceRecord: todayRecord),
+        // Use unified timeline widget with lazy loading
+        UnifiedTimelineWidget(
+          attendanceRecord: todayRecord,
+          enableLazyLoading: true,
+          loadingMessage: 'Loading activity details...',
+        ),
         const SizedBox(height: 16),
         // Keep old activities as backup/additional info
         if (activities.isNotEmpty) ...[

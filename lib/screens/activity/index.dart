@@ -599,22 +599,6 @@ int storeId,
     });
   }
 
-
-  Future<void> _clearAllActivities() async {
-    setState(() {
-      todoItems.clear();
-      itineraries.clear();
-      completedTasks = 0;
-    });
-    final prefs = await SharedPreferences.getInstance();
-    final dateStr =
-        '${selectedDate.year.toString().padLeft(4, '0')}-${selectedDate.month.toString().padLeft(2, '0')}-${selectedDate.day.toString().padLeft(2, '0')}';
-    await prefs.remove('todo_items_$dateStr');
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('All activities and todos cleared')),
-    );
-  }
-
   List<Map<String, dynamic>> getStoreVisits() {
     // Get stores from itinerary API for selected date
     final dateStr =
@@ -692,17 +676,6 @@ int storeId,
             tooltip: 'Select Date',
           ),
           IconButton(
-            icon: const Icon(Icons.list_alt),
-            onPressed: () =>
-                setState(() => showTodoTimeline = !showTodoTimeline),
-            tooltip: 'Todo Timeline',
-          ),
-          IconButton(
-            icon: const Icon(Icons.clear_all),
-            onPressed: _clearAllActivities,
-            tooltip: 'Clear All',
-          ),
-          IconButton(
             icon: _isLoadingAttendance 
                 ? const SizedBox(
                     width: 20,
@@ -748,19 +721,22 @@ int storeId,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Row(
-                children: [
-                  const Icon(
-                    Icons.calendar_today,
+                    children: [
+                      const Icon(
+                        Icons.calendar_today,
                         color: Color(0xFF29BDCE),
-                    size: 20,
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                        '${selectedDate.day} ${_getMonthName(selectedDate.month)} ${selectedDate.year}',
-                    style: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          color: Color(0xFF29BDCE),
+                        size: 20,
+                      ),
+                      const SizedBox(width: 8),
+                      GestureDetector(
+                        onTap: _showDateFilterDialog,
+                        child: Text(
+                          '${selectedDate.day} ${_getMonthName(selectedDate.month)} ${selectedDate.year}',
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFF29BDCE),
+                          ),
                         ),
                       ),
                     ],
@@ -775,50 +751,6 @@ int storeId,
             ),
 
             const SizedBox(height: 16),
-
-            // Todo Timeline (if enabled)
-            if (showTodoTimeline && todoItems.isNotEmpty) ...[
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.green.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.green.withOpacity(0.3)),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        const Icon(Icons.list_alt, color: Colors.green),
-                        const SizedBox(width: 8),
-                        Text(
-                          translate('todoTimeline'),
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.green,
-                          ),
-                        ),
-                        const Spacer(),
-                        IconButton(
-                          icon: const Icon(Icons.fullscreen),
-                          onPressed: _showTodoTimelineDialog,
-                          tooltip: translate('viewFullTimeline'),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    ...todoItems
-                        .take(3)
-                        .map(
-                          (item) => _buildLazyTodoItem(item),
-                        ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 16),
-            ],
 
             // Store visits list with pagination
             Expanded(
@@ -836,13 +768,30 @@ int storeId,
     );
   }
 
-  // Placeholder methods - these will be implemented in the next part
-  void _showDateFilterDialog() {
-    // TODO: Implement date filter dialog
+  // Date filter dialog implementation
+  void _showDateFilterDialog() async {
+    final DateTime? picked = await showDatePicker(
+      context: context,
+      initialDate: selectedDate,
+      firstDate: DateTime(DateTime.now().year - 2, 1),
+      lastDate: DateTime(DateTime.now().year + 2, 12, 31),
+      helpText: 'Pilih Tanggal',
+      cancelText: 'Batal',
+      confirmText: 'Pilih',
+    );
+    if (picked != null && picked != selectedDate) {
+      setState(() {
+        selectedDate = picked;
+      });
+      await _loadItinerariesForDate(selectedDate);
+      await _loadAttendanceRecords();
+      await _loadTodoItems();
+      await _refreshTodoCompletionStatus();
+    }
   }
 
   void _showTodoTimelineDialog() {
-    // TODO: Implement todo timeline dialog
+    // TODO: Implement todo timeline dialog if needed
   }
 
   Widget _buildEmptyState() {
@@ -1143,21 +1092,6 @@ int storeId,
                   padding: const EdgeInsets.all(16),
                   child: Row(
                     children: [
-                      // Time
-                      // Container(
-                      //   width: 60,
-                      //   child: Text(
-                      //     _getAttendanceStatusText(storeId),
-                      //     style: TextStyle(
-                      //       fontSize: 14,
-                      //       fontWeight: FontWeight.bold,
-                      //       color: _getAttendanceStatus(storeId) ? const Color(0xFF29BDCE) : Colors.grey[400],
-                      //     ),
-                      //   ),
-                      // ),
-                      
-                      // const SizedBox(width: 12),
-                      
                       // Store icon and name
                       Container(
                         width: 80,

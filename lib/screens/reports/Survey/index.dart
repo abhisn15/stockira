@@ -8,6 +8,7 @@ import 'package:intl/intl.dart';
 import '../../../config/env.dart';
 import '../../../services/auth_service.dart';
 import '../../../services/report_completion_service.dart';
+import '../../../widgets/survey_photo_field_enhanced.dart';
 
 class SurveyReportScreen extends StatefulWidget {
   final int storeId;
@@ -1000,50 +1001,18 @@ class _SurveyReportScreenState extends State<SurveyReportScreen> {
     final selectedImage = _photoFields[fieldName];
     final isUploaded = _uploadedImageUrls[fieldName] != null;
     
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          label,
-          style: const TextStyle(
-            fontWeight: FontWeight.w500,
-            fontSize: 14,
-          ),
-        ),
-        const SizedBox(height: 8),
-        InkWell(
-          onTap: () => _pickImage(fieldName),
-          child: Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              border: Border.all(
-                color: isUploaded ? Colors.green : (selectedImage != null ? Colors.orange : Colors.grey),
-                width: 2,
-              ),
-              borderRadius: BorderRadius.circular(8),
-              color: isUploaded ? Colors.green[50] : (selectedImage != null ? Colors.orange[50] : Colors.grey[50]),
-            ),
-            child: Column(
-              children: [
-                Icon(
-                  isUploaded ? Icons.cloud_done : (selectedImage != null ? Icons.cloud_upload : Icons.add_photo_alternate),
-                  color: isUploaded ? Colors.green : (selectedImage != null ? Colors.orange : Colors.grey),
-                  size: 32,
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  isUploaded ? 'Uploaded' : (selectedImage != null ? 'Uploading...' : 'Tap to select'),
-                  style: TextStyle(
-                    color: isUploaded ? Colors.green[700] : (selectedImage != null ? Colors.orange[700] : Colors.grey[600]),
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ],
+    return SurveyPhotoFieldEnhanced(
+      fieldName: fieldName,
+      label: label,
+      selectedImage: selectedImage,
+      isUploaded: isUploaded,
+      onPickImage: () => _pickImage(fieldName),
+      onRemoveImage: () {
+        setState(() {
+          _photoFields[fieldName] = null;
+          _uploadedImageUrls.remove(fieldName);
+        });
+      },
     );
   }
 

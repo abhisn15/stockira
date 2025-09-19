@@ -1,8 +1,8 @@
 import 'dart:convert';
-import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../config/env.dart';
 import '../models/user.dart';
+import 'http_client_service.dart';
 
 class AuthService {
   static const String _tokenKey = 'auth_token';
@@ -11,19 +11,19 @@ class AuthService {
   // Login method
   static Future<LoginResponse> login(String emailOrUsername, String password, {bool rememberMe = false, String? appVersion, String? appDevice}) async {
     try {
-      final response = await http.post(
+      final response = await HttpClientService.post(
         Uri.parse(Env.loginUrl),
         headers: {
           'Content-Type': 'application/json',
           'Accept': 'application/json',
         },
-        body: jsonEncode({
+        body: {
           'email_or_username': emailOrUsername,
           'password': password,
           'remember_me': rememberMe ? 1 : 0,
           'app_version': appVersion ?? 'DEVICE 1',
           'app_device': appDevice ?? 'VERSION 1',
-        }),
+        },
       );
 
       if (response.statusCode == 200) {
@@ -129,7 +129,7 @@ class AuthService {
         return false;
       }
 
-      final response = await http.post(
+      final response = await HttpClientService.post(
         Uri.parse('${Env.apiBaseUrl}/logout'),
         headers: {
           'Content-Type': 'application/json',
@@ -137,9 +137,6 @@ class AuthService {
           'Authorization': 'Bearer $token',
         },
       );
-
-      print('Logout API response: ${response.statusCode}');
-      print('Logout API body: ${response.body}');
       
       return response.statusCode == 200;
     } catch (e) {
@@ -154,18 +151,18 @@ class AuthService {
       // Get the token from login response
       final token = await getToken();
       
-      final response = await http.post(
+      final response = await HttpClientService.post(
         Uri.parse(Env.profileUrl),
         headers: {
           'Content-Type': 'application/json',
           'Accept': 'application/json',
           if (token != null) 'Authorization': 'Bearer $token',
         },
-        body: jsonEncode({
+        body: {
           'email_or_username': emailOrUsername,
           'password': password,
           'remember_me': rememberMe ? 1 : 0,
-        }),
+        },
       );
 
       if (response.statusCode == 200) {

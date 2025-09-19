@@ -16,7 +16,6 @@ class _AvailabilityScreenState extends State<AvailabilityScreen> {
   
   // State variables
   bool _isLoading = false;
-  bool _isSubmitting = false;
   List<AvailabilityData> _itineraries = [];
   List<Product> _allProducts = [];
   List<Product> _availableProducts = [];
@@ -127,12 +126,10 @@ class _AvailabilityScreenState extends State<AvailabilityScreen> {
     return _selectedProducts.any((p) => p.id == product.id);
   }
 
-  bool _isProductAvailable(Product product) {
-    return _availableProducts.any((p) => p.id == product.id);
-  }
 
-  void _toggleProductSelection(Product product) {
-    setState(() {
+  void _toggleProductSelection(Product product, [StateSetter? setModalState]) {
+    final updateState = setModalState ?? setState;
+    updateState(() {
       if (_isProductSelected(product)) {
         _selectedProducts.removeWhere((p) => p.id == product.id);
       } else {
@@ -152,7 +149,6 @@ class _AvailabilityScreenState extends State<AvailabilityScreen> {
       return;
     }
 
-    setState(() => _isSubmitting = true);
 
     try {
       final productIds = _selectedProducts.map((p) => p.id).toList();
@@ -183,55 +179,10 @@ class _AvailabilityScreenState extends State<AvailabilityScreen> {
       print('Error adding products: $e');
       _showSnackBar('Error adding products: ${e.toString()}', Colors.red);
     } finally {
-      setState(() => _isSubmitting = false);
+      // Loading completed
     }
   }
 
-  Future<void> _updateProducts() async {
-    if (_selectedStore == null) {
-      _showSnackBar('Please check in to a store first', Colors.red);
-      return;
-    }
-
-    if (_selectedProducts.isEmpty) {
-      _showSnackBar('Please select products to update', Colors.red);
-      return;
-    }
-
-    setState(() => _isSubmitting = true);
-
-    try {
-      final productIds = _selectedProducts.map((p) => p.id).toList();
-      
-      print('🔄 Updating products for store ${_selectedStore!.id}: $productIds');
-      
-      final response = await AvailabilityService.updateStoreProducts(
-        storeId: _selectedStore!.id,
-        productIds: productIds,
-      );
-
-      print('📤 Update Products Response: ${response}');
-
-      if (response['success']) {
-        _showSnackBar('Products updated successfully!', Colors.green);
-        // Reload available products for current store
-        if (_selectedStore != null) {
-          await _loadStoreProducts(_selectedStore!.id);
-        }
-        // Clear selection
-        setState(() {
-          _selectedProducts.clear();
-        });
-      } else {
-        _showSnackBar(response['message'] ?? 'Failed to update products', Colors.red);
-      }
-    } catch (e) {
-      print('Error updating products: $e');
-      _showSnackBar('Error updating products: ${e.toString()}', Colors.red);
-    } finally {
-      setState(() => _isSubmitting = false);
-    }
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -245,7 +196,7 @@ class _AvailabilityScreenState extends State<AvailabilityScreen> {
             fontWeight: FontWeight.bold,
           ),
         ),
-        backgroundColor: Colors.red,
+        backgroundColor: Color(0xFF2E7D32),
         elevation: 0,
         iconTheme: const IconThemeData(color: Colors.white),
       ),
@@ -284,7 +235,7 @@ class _AvailabilityScreenState extends State<AvailabilityScreen> {
       floatingActionButton: _selectedTabIndex == 0 && _selectedStore != null
           ? FloatingActionButton(
               onPressed: () => _showProductSelectionDialog(),
-              backgroundColor: Colors.blue,
+              backgroundColor: Color(0xFF2E7D32),
               child: const Icon(Icons.add, color: Colors.white),
             )
           : null,
@@ -315,7 +266,7 @@ class _AvailabilityScreenState extends State<AvailabilityScreen> {
             children: [
               Icon(
                 Icons.store,
-                color: Colors.blue,
+                color: Color(0xFF2E7D32),
                 size: 24,
               ),
               const SizedBox(width: 12),
@@ -330,7 +281,7 @@ class _AvailabilityScreenState extends State<AvailabilityScreen> {
               ),
               Icon(
                 Icons.keyboard_arrow_down,
-                color: Colors.blue,
+                color: Color(0xFF2E7D32),
               ),
             ],
           ),
@@ -376,10 +327,10 @@ class _AvailabilityScreenState extends State<AvailabilityScreen> {
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 12),
         decoration: BoxDecoration(
-          color: isSelected ? Colors.red : Colors.white,
+          color: isSelected ? Color(0xFF2E7D32) : Colors.white,
           borderRadius: BorderRadius.circular(8),
           border: Border.all(
-            color: isSelected ? Colors.red : Colors.grey[300]!,
+            color: isSelected ? Color(0xFF2E7D32) : Colors.grey[300]!,
           ),
         ),
         child: Text(
@@ -550,7 +501,7 @@ class _AvailabilityScreenState extends State<AvailabilityScreen> {
                       width: 4,
                       height: 40,
                       decoration: BoxDecoration(
-                        color: Colors.blue,
+                        color: Color(0xFF2E7D32),
                         borderRadius: BorderRadius.circular(2),
                       ),
                     ),
@@ -623,7 +574,8 @@ class _AvailabilityScreenState extends State<AvailabilityScreen> {
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (context) => DraggableScrollableSheet(
+      builder: (context) => StatefulBuilder(
+        builder: (context, setModalState) => DraggableScrollableSheet(
         initialChildSize: 0.8,
         maxChildSize: 0.95,
         minChildSize: 0.5,
@@ -649,7 +601,7 @@ class _AvailabilityScreenState extends State<AvailabilityScreen> {
               Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: Colors.blue,
+                  color: Color(0xFF2E7D32),
                   borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
                 ),
                 child: Row(
@@ -665,7 +617,7 @@ class _AvailabilityScreenState extends State<AvailabilityScreen> {
                     const Spacer(),
                     TextButton(
                       onPressed: () {
-                        setState(() {
+                        setModalState(() {
                           _selectedProducts.clear();
                         });
                       },
@@ -704,7 +656,7 @@ class _AvailabilityScreenState extends State<AvailabilityScreen> {
                 child: TextField(
                   controller: _searchController,
                   onChanged: (value) {
-                    setState(() => _searchQuery = value);
+                    setModalState(() => _searchQuery = value);
                   },
                   decoration: InputDecoration(
                     hintText: 'Search products...',
@@ -731,10 +683,10 @@ class _AvailabilityScreenState extends State<AvailabilityScreen> {
                     return Container(
                       margin: const EdgeInsets.only(bottom: 8),
                       decoration: BoxDecoration(
-                        color: isSelected ? Colors.blue[50] : Colors.grey[50],
+                        color: isSelected ? Colors.green[50] : Colors.grey[50],
                         borderRadius: BorderRadius.circular(8),
                         border: Border.all(
-                          color: isSelected ? Colors.blue : Colors.grey[300]!,
+                          color: isSelected ? Color(0xFF2E7D32) : Colors.grey[300]!,
                         ),
                       ),
                       child: ListTile(
@@ -742,7 +694,7 @@ class _AvailabilityScreenState extends State<AvailabilityScreen> {
                           product.name,
                           style: TextStyle(
                             fontWeight: FontWeight.w600,
-                            color: isSelected ? Colors.blue[700] : Colors.black87,
+                            color: isSelected ? Color(0xFF2E7D32) : Colors.black87,
                           ),
                         ),
                         subtitle: Text(
@@ -753,9 +705,9 @@ class _AvailabilityScreenState extends State<AvailabilityScreen> {
                           ),
                         ),
                         trailing: isSelected
-                            ? Icon(Icons.check_circle, color: Colors.blue[600])
+                            ? Icon(Icons.check_circle, color: Color(0xFF2E7D32))
                             : Icon(Icons.add_circle_outline, color: Colors.grey[400]),
-                        onTap: () => _toggleProductSelection(product),
+                        onTap: () => _toggleProductSelection(product, setModalState),
                       ),
                     );
                   },
@@ -789,7 +741,7 @@ class _AvailabilityScreenState extends State<AvailabilityScreen> {
                       icon: const Icon(Icons.add),
                       label: const Text('Tambah Produk'),
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.blue,
+                        backgroundColor: Color(0xFF2E7D32),
                         foregroundColor: Colors.white,
                         padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
                       ),
@@ -801,6 +753,7 @@ class _AvailabilityScreenState extends State<AvailabilityScreen> {
           ),
         ),
       ),
+    ),
     );
   }
 
@@ -834,15 +787,4 @@ class _AvailabilityScreenState extends State<AvailabilityScreen> {
     );
   }
 
-  String _formatPrice(String price) {
-    try {
-      final double value = double.parse(price);
-      return value.toStringAsFixed(0).replaceAllMapped(
-        RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
-        (Match m) => '${m[1]}.',
-      );
-    } catch (e) {
-      return price;
-    }
-  }
 }

@@ -1,19 +1,39 @@
 import 'package:flutter/material.dart';
 import 'package:stockira/screens/url_setting/index.dart';
 import 'package:stockira/screens/auth/index.dart';
-import 'package:stockira/screens/dashboard/index.dart';
+import 'package:stockira/screens/Dashboard/index.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:stockira/services/auth_service.dart';
 import 'package:stockira/services/theme_service.dart';
 import 'package:stockira/services/settings_service.dart';
+import 'package:stockira/services/api_logger.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_translate/flutter_translate.dart';
 import 'package:intl/date_symbol_data_local.dart';
+
+// Custom MaterialLocalizations delegate to fix DatePickerDialog error
+class CustomMaterialLocalizationsDelegate extends LocalizationsDelegate<MaterialLocalizations> {
+  const CustomMaterialLocalizationsDelegate();
+
+  @override
+  bool isSupported(Locale locale) => true;
+
+  @override
+  Future<MaterialLocalizations> load(Locale locale) async {
+    return DefaultMaterialLocalizations();
+  }
+
+  @override
+  bool shouldReload(CustomMaterialLocalizationsDelegate old) => false;
+}
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await dotenv.load(fileName: ".env");
   await SharedPreferences.getInstance();
+  
+  // Initialize API logging for development mode
+  ApiLogger.setEnabled(true); // Only logs in debug mode
   
   // Initialize locale data for intl package
   await initializeDateFormatting('en', null);
@@ -63,6 +83,13 @@ class _MyAppState extends State<MyApp> {
     return MaterialApp(
       title: 'Stockira',
       theme: _currentTheme,
+      localizationsDelegates: const [
+        CustomMaterialLocalizationsDelegate(),
+      ],
+      supportedLocales: const [
+        Locale('en', 'US'),
+        Locale('id', 'ID'),
+      ],
       home: AuthWrapper(
         onThemeChanged: _loadTheme,
       ),

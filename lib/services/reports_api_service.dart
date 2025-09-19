@@ -1,8 +1,8 @@
 import 'dart:convert';
-import 'package:http/http.dart' as http;
 import '../config/env.dart';
 import '../services/auth_service.dart';
 import '../models/reports_api.dart';
+import 'http_client_service.dart';
 
 class ReportsApiService {
   // Get all report types
@@ -13,17 +13,13 @@ class ReportsApiService {
         throw Exception('Token tidak ditemukan');
       }
 
-      final response = await http.get(
+      final response = await HttpClientService.get(
         Uri.parse('${Env.apiBaseUrl}/reports/types'),
         headers: {
           'Accept': 'application/json',
           'Authorization': 'Bearer $token',
         },
       );
-
-      print('=== REPORT TYPES API RESPONSE ===');
-      print('Status Code: ${response.statusCode}');
-      print('Response Body: ${response.body}');
 
       if (response.statusCode == 200) {
         final data = ReportTypesResponse.fromJson(
@@ -67,18 +63,13 @@ class ReportsApiService {
         queryParameters: queryParams,
       );
 
-      final response = await http.get(
+      final response = await HttpClientService.get(
         uri,
         headers: {
           'Accept': 'application/json',
           'Authorization': 'Bearer $token',
         },
       );
-
-      print('=== REPORT DATA API RESPONSE ===');
-      print('URL: $uri');
-      print('Status Code: ${response.statusCode}');
-      print('Response Body: ${response.body}');
 
       if (response.statusCode == 200) {
         final data = ReportDataResponse.fromJson(
@@ -118,18 +109,13 @@ class ReportsApiService {
         queryParameters: queryParams,
       );
 
-      final response = await http.get(
+      final response = await HttpClientService.get(
         uri,
         headers: {
           'Accept': 'application/json',
           'Authorization': 'Bearer $token',
         },
       );
-
-      print('=== REPORT SUMMARY API RESPONSE ===');
-      print('URL: $uri');
-      print('Status Code: ${response.statusCode}');
-      print('Response Body: ${response.body}');
 
       if (response.statusCode == 200) {
         final data = ReportSummaryResponse.fromJson(

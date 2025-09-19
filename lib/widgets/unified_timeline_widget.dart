@@ -1,18 +1,116 @@
 import 'package:flutter/material.dart';
 import '../models/attendance_record.dart';
+import '../models/timeline_event.dart';
+import 'lazy_loading_timeline_widget.dart';
+import '../services/activity_lazy_loading_service.dart';
 
-class UnifiedTimelineWidget extends StatelessWidget {
+class UnifiedTimelineWidget extends StatefulWidget {
   final AttendanceRecord? attendanceRecord;
+  final bool enableLazyLoading;
+  final String? loadingMessage;
 
   const UnifiedTimelineWidget({
     super.key,
     this.attendanceRecord,
+    this.enableLazyLoading = true,
+    this.loadingMessage,
   });
 
   @override
+  State<UnifiedTimelineWidget> createState() => _UnifiedTimelineWidgetState();
+}
+
+class _UnifiedTimelineWidgetState extends State<UnifiedTimelineWidget> {
+  bool _isLoading = false;
+  bool _hasMore = false;
+  int _currentPage = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkForMoreActivities();
+  }
+
+  @override
+  void didUpdateWidget(UnifiedTimelineWidget oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.attendanceRecord != widget.attendanceRecord) {
+      _currentPage = 0;
+      _checkForMoreActivities();
+    }
+  }
+
+  Future<void> _checkForMoreActivities() async {
+    if (!widget.enableLazyLoading || widget.attendanceRecord?.id == null) {
+      return;
+    }
+
+    try {
+      final hasMore = await ActivityLazyLoadingService.hasMoreActivities(
+        attendanceRecordId: widget.attendanceRecord!.id!,
+        currentPage: _currentPage,
+      );
+      
+      if (mounted) {
+        setState(() {
+          _hasMore = hasMore;
+        });
+      }
+    } catch (e) {
+      print('Error checking for more activities: $e');
+    }
+  }
+
+  Future<List<TimelineEvent>> _loadMoreActivities() async {
+    if (!widget.enableLazyLoading || widget.attendanceRecord?.id == null) {
+      return [];
+    }
+
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      final newEvents = await ActivityLazyLoadingService.loadActivityEventsWithRetry(
+        attendanceRecordId: widget.attendanceRecord!.id!,
+        page: _currentPage + 1,
+      );
+
+      setState(() {
+        _currentPage++;
+        _isLoading = false;
+      });
+
+      // Check if there are more activities
+      await _checkForMoreActivities();
+
+      return newEvents;
+    } catch (e) {
+      setState(() {
+        _isLoading = false;
+      });
+      return <TimelineEvent>[];
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
-    if (attendanceRecord == null) {
+    if (widget.attendanceRecord == null) {
       return _buildEmptyTimeline();
+    }
+
+    if (widget.enableLazyLoading) {
+      return LazyLoadingTimelineWidget(
+        attendanceRecord: widget.attendanceRecord,
+        onLoadMore: () => _loadMoreActivities(),
+        isLoading: _isLoading,
+        hasMore: _hasMore,
+        loadingMessage: widget.loadingMessage ?? ActivityLazyLoadingService.getLoadingMessage(
+          isLoading: _isLoading,
+          hasMore: _hasMore,
+          currentPage: _currentPage,
+        ),
+      );
     }
 
     return Container(
@@ -100,30 +198,32 @@ class UnifiedTimelineWidget extends StatelessWidget {
     final events = <TimelineEvent>[];
     
     // Check-in event
-    if (attendanceRecord!.checkInTime != null) {
+    if (widget.attendanceRecord!.checkInTime != null) {
       events.add(TimelineEvent(
-        time: attendanceRecord!.checkInTime!,
+        time: widget.attendanceRecord!.checkInTime!,
         title: 'Check In',
-        subtitle: attendanceRecord!.storeName ?? 'Unknown Store',
+        subtitle: widget.attendanceRecord!.storeName ?? 'Unknown Store',
         icon: Icons.login,
         color: Colors.green,
         isCompleted: true,
+        isActive: false,
       ));
     }
 
     // No break functionality - removed all break-related events
 
     // Check-out event
-    if (attendanceRecord!.checkOutTime != null) {
+    if (widget.attendanceRecord!.checkOutTime != null) {
       events.add(TimelineEvent(
-        time: attendanceRecord!.checkOutTime!,
+        time: widget.attendanceRecord!.checkOutTime!,
         title: 'Check Out',
         subtitle: 'Work completed',
         icon: Icons.logout,
         color: Colors.red,
         isCompleted: true,
+        isActive: false,
       ));
-    } else if (attendanceRecord!.isCheckedIn) {
+    } else if (widget.attendanceRecord!.isCheckedIn) {
       // Show expected check-out as pending
       events.add(TimelineEvent(
         time: DateTime.now(),
@@ -132,6 +232,7 @@ class UnifiedTimelineWidget extends StatelessWidget {
         icon: Icons.logout,
         color: Colors.grey,
         isCompleted: false,
+        isActive: false,
       ));
     }
 
@@ -238,22 +339,3 @@ class UnifiedTimelineWidget extends StatelessWidget {
   }
 }
 
-class TimelineEvent {
-  final DateTime time;
-  final String title;
-  final String subtitle;
-  final IconData icon;
-  final Color color;
-  final bool isCompleted;
-  final bool isActive;
-
-  TimelineEvent({
-    required this.time,
-    required this.title,
-    required this.subtitle,
-    required this.icon,
-    required this.color,
-    required this.isCompleted,
-    this.isActive = false,
-  });
-}

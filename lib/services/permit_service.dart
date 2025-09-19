@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../config/env.dart';
+import 'http_client_service.dart';
 
 class PermitService {
   static String get _apiBaseUrl => Env.apiBaseUrl;
@@ -29,34 +30,36 @@ class PermitService {
 
       final url = Uri.parse('$_apiBaseUrl/permits');
       
-      // Create multipart request
-      final request = http.MultipartRequest('POST', url);
+      // Prepare form fields
+      final fields = {
+        'permit_type_id': permitTypeId.toString(),
+        'start_date': startDate,
+        'end_date': endDate,
+        'reason': reason,
+      };
       
-      // Add headers
-      request.headers['Authorization'] = 'Bearer $token';
-      request.headers['Accept'] = 'application/json';
+      // Prepare headers
+      final headers = {
+        'Authorization': 'Bearer $token',
+        'Accept': 'application/json',
+      };
       
-      // Add form fields
-      request.fields['permit_type_id'] = permitTypeId.toString();
-      request.fields['start_date'] = startDate;
-      request.fields['end_date'] = endDate;
-      request.fields['reason'] = reason;
-      
-      // Add image file
+      // Prepare files
       final imageBytes = await imageFile.readAsBytes();
       final multipartFile = http.MultipartFile.fromBytes(
         'image',
         imageBytes,
         filename: imageFile.path.split('/').last,
       );
-      request.files.add(multipartFile);
       
-      // Send request
-      final streamedResponse = await request.send();
-      final response = await http.Response.fromStream(streamedResponse);
-      
-      print('📤 Permit submission response: ${response.statusCode}');
-      print('📤 Permit submission body: ${response.body}');
+      // Send multipart request
+      final response = await HttpClientService.multipartRequest(
+        'POST',
+        url,
+        headers: headers,
+        fields: fields,
+        files: [multipartFile],
+      );
       
       if (response.statusCode == 200 || response.statusCode == 201) {
         final responseData = json.decode(response.body);
